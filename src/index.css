@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#0a0e1a] text-slate-100 font-sans antialiased;
+    background-image: 
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 80, 255, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255, 50, 80, 0.05), transparent);
+  }
+}
+
+/* ─── Premium Scrollbars ─── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #334155, #1e293b);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #475569, #334155);
+}
+
+/* ─── Glassmorphism Panels ─── */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  box-shadow: 
+    0 0 0 1px rgba(255,255,255,0.02) inset,
+    0 4px 24px -4px rgba(0,0,0,0.3);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.glass-panel:hover {
+  border-color: rgba(71, 85, 105, 0.6);
+  box-shadow: 
+    0 0 0 1px rgba(255,255,255,0.03) inset,
+    0 8px 32px -4px rgba(0,0,0,0.4);
+}
+
+/* AI-accent variant with violet glow */
+.glass-panel-accent {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  box-shadow: 
+    0 0 0 1px rgba(139, 92, 246, 0.05) inset,
+    0 0 20px -8px rgba(139, 92, 246, 0.15),
+    0 4px 24px -4px rgba(0,0,0,0.3);
+}
+.glass-panel-accent:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 
+    0 0 0 1px rgba(139, 92, 246, 0.08) inset,
+    0 0 30px -8px rgba(139, 92, 246, 0.2),
+    0 8px 32px -4px rgba(0,0,0,0.4);
+}
+
+/* ─── Gradient Text ─── */
+.gradient-text {
+  background: linear-gradient(135deg, #e2e8f0 0%, #c084fc 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Animations ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-fade-in-delay-1 {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
+  opacity: 0;
+}
+.animate-fade-in-delay-2 {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.16s forwards;
+  opacity: 0;
+}
+.animate-fade-in-delay-3 {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.24s forwards;
+  opacity: 0;
+}
+
+/* AI pulse glow for buttons */
+@keyframes aiPulse {
+  0%, 100% { box-shadow: 0 0 12px -4px rgba(139, 92, 246, 0.4); }
+  50% { box-shadow: 0 0 20px -4px rgba(139, 92, 246, 0.6); }
+}
+.ai-glow {
+  animation: aiPulse 2.5s ease-in-out infinite;
+}
+
+/* Shimmer loading placeholder */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, rgba(30,41,59,0.5) 25%, rgba(51,65,85,0.5) 50%, rgba(30,41,59,0.5) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* ─── Card hover lift ─── */
+.card-hover {
+  @apply transition-all duration-300;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px -12px rgba(0,0,0,0.4), 0 0 0 1px rgba(71,85,105,0.3);
+}
+
+/* ─── Hover scales ─── */
+.hover-scale {
+  @apply transition-all duration-200 hover:scale-[1.01] active:scale-[0.99];
+}
+
+/* ─── Input focus glow ─── */
+input:focus, textarea:focus, select:focus {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.08), 0 0 12px -4px rgba(139, 92, 246, 0.15) !important;
+  outline: none !important;
+}
+
+/* ─── Select/Option dark mode (Windows Electron fix) ─── */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 28px;
+  background-color: #020617 !important;
+  color: #e2e8f0 !important;
+}
+select option {
+  background-color: #020617 !important;
+  color: #e2e8f0 !important;
+  padding: 8px 12px;
+}
+select option:checked,
+select option:hover {
+  background-color: #1e1b4b !important;
+  color: #c4b5fd !important;
+}
+
+/* ─── Upload zone dashed animation ─── */
+@keyframes borderDash {
+  to { stroke-dashoffset: -16; }
+}
+.upload-zone {
+  position: relative;
+  transition: all 0.3s ease;
+}
+.upload-zone:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.03);
+}
