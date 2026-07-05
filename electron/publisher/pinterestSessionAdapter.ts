@@ -163,7 +163,7 @@ export class PinterestSessionAdapter {
       
       // /settings/account/ is ONLY accessible to logged-in users.
       // Logged-out users are hard-redirected to the landing page or /login/.
-      await page.goto('https://www.pinterest.com/settings/account/', { 
+      await page.goto('https://www.pinterest.com/', { 
         waitUntil: 'domcontentloaded', 
         timeout: 30000 
       });
@@ -175,13 +175,30 @@ export class PinterestSessionAdapter {
       console.log(`🔍 Verification URL for '${account.nickname}': ${currentUrl}`);
       await this.db.addLog('info', `Session verification reached URL: ${currentUrl}`, { accountId: account.id });
 
-      // If we are logged in, URL will contain /settings
-      // If we are logged out, Pinterest redirects to / or /login/ or /auth/
-      const isLoggedIn = (
-        currentUrl.includes('/settings') ||
-        currentUrl.includes('/profile/') ||
-        currentUrl.includes('/homefeed/')
-      ) && !currentUrl.includes('/login') && !currentUrl.includes('/auth/');
+      // Look for DOM elements to confirm login state
+      let isLoggedIn = false;
+      
+      // Check for elements that only exist when logged OUT
+      const isLoggedOut = await page.locator('[data-test-id="login-button"], div:has-text("Log in"), button:has-text("Log in")').first().isVisible().catch(() => false);
+      
+      // Check for elements that only exist when logged IN
+      const hasProfileMenu = await page.locator('[data-test-id="header-profile"], [data-test-id="header-account-menu"], [aria-label="Accounts and more options"]').first().isVisible().catch(() => false);
+
+      if (hasProfileMenu) {
+        isLoggedIn = true;
+      } else if (isLoggedOut) {
+        isLoggedIn = false;
+      } else {
+        // Fallback to URL checking if DOM elements aren't found
+        isLoggedIn = (
+          currentUrl.includes('/homefeed') ||
+          currentUrl.includes('/ideas') ||
+          currentUrl.includes('/today') ||
+          currentUrl.includes('/business') ||
+          currentUrl.includes('/pin-creation') ||
+          currentUrl.includes('/settings')
+        ) && !currentUrl.includes('/login') && !currentUrl.includes('/auth/');
+      }
 
       console.log(`🔍 Session for '${account.nickname}': ${isLoggedIn ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
       
@@ -301,12 +318,29 @@ export class PinterestSessionAdapter {
       // Wait for login completion
       await new Promise(r => setTimeout(r, 8000));
       
-      // Navigate to settings to verify (most reliable auth check)
-      await page.goto('https://www.pinterest.com/settings/account/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+      // Navigate to homepage to verify (most reliable auth check)
+      await page.goto('https://www.pinterest.com/', { waitUntil: 'domcontentloaded', timeout: 25000 });
       await new Promise(r => setTimeout(r, 3000));
 
       const currentUrl = page.url();
-      const isLoggedIn = currentUrl.includes('/settings') && !currentUrl.includes('/login');
+      let isLoggedIn = false;
+      const hasProfileMenu = await page.locator('[data-test-id="header-profile"], [data-test-id="header-account-menu"], [aria-label="Accounts and more options"]').first().isVisible().catch(() => false);
+      const isLoggedOut = await page.locator('[data-test-id="login-button"], div:has-text("Log in"), button:has-text("Log in")').first().isVisible().catch(() => false);
+      
+      if (hasProfileMenu) {
+        isLoggedIn = true;
+      } else if (isLoggedOut) {
+        isLoggedIn = false;
+      } else {
+        isLoggedIn = (
+          currentUrl.includes('/homefeed') ||
+          currentUrl.includes('/ideas') ||
+          currentUrl.includes('/today') ||
+          currentUrl.includes('/business') ||
+          currentUrl.includes('/pin-creation') ||
+          currentUrl.includes('/settings')
+        ) && !currentUrl.includes('/login') && !currentUrl.includes('/auth/');
+      }
       
       await this.db.saveAccount({
         ...account,
