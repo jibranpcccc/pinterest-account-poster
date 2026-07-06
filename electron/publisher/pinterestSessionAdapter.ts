@@ -124,25 +124,50 @@ export class PinterestSessionAdapter {
     let avatarUrl: string | null = null;
     try {
       // 1. Scrape username from header profile button link
-      const profileLinkLocator = page.locator('a[data-test-id="header-profile-button"], [data-test-id="header-profile-button"] a, a[aria-label*="profile"], a[aria-label*="Profile"]').first();
+      const profileLinkLocator = page.locator('a[data-test-id="header-profile-button"], [data-test-id="header-profile-button"] a, a[aria-label*="profile" i], a[aria-label*="Profile" i], a[href*="/settings" i]').first();
       if (await profileLinkLocator.isVisible()) {
         const href = await profileLinkLocator.getAttribute('href');
         if (href) {
           const cleanedHref = href.split('/').filter(Boolean);
-          if (cleanedHref.length > 0) {
+          if (cleanedHref.length > 0 && !cleanedHref[0].startsWith('settings')) {
             // Pinterest handles are always the first path segment (e.g. /username/)
             username = cleanedHref[0];
           }
         }
       }
 
-      // 2. Scrape avatar picture from header profile button image
-      const profileImgLocator = page.locator('[data-test-id="header-profile-button"] img, [data-test-id="header-profile"] img, a[aria-label*="profile"] img, a[aria-label*="Profile"] img').first();
-      if (await profileImgLocator.isVisible()) {
-        const src = await profileImgLocator.getAttribute('src');
-        if (src) {
-          avatarUrl = src;
+      // Check current URL for username fallback (e.g. if navigated to settings or profile page)
+      if (!username) {
+        const currentUrl = page.url();
+        if (currentUrl.includes('pinterest.com/')) {
+          const pathSegments = new URL(currentUrl).pathname.split('/').filter(Boolean);
+          if (pathSegments.length === 1 && pathSegments[0] !== 'settings' && pathSegments[0] !== 'homefeed') {
+            username = pathSegments[0];
+          }
         }
+      }
+
+      // 2. Scrape avatar picture using username-based or header profile locators
+      const avatarSelectors = [
+        username ? `a[href*="/${username}/"] img` : '',
+        username ? `a[href="/${username}/"] img` : '',
+        '[data-test-id="header-profile-button"] img',
+        '[data-test-id="header-profile"] img',
+        'a[aria-label*="profile" i] img',
+        'a[aria-label*="Profile" i] img'
+      ].filter(Boolean);
+
+      for (const selector of avatarSelectors) {
+        try {
+          const imgLocator = page.locator(selector).first();
+          if (await imgLocator.isVisible()) {
+            const src = await imgLocator.getAttribute('src');
+            if (src && (src.startsWith('http') || src.startsWith('data:'))) {
+              avatarUrl = src;
+              break;
+            }
+          }
+        } catch (e) {}
       }
       
       console.log(`[Scraper] Scraped details for ${nickname}: username='${username}', avatarUrl='${avatarUrl}'`);
