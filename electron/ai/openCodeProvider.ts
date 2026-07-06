@@ -236,7 +236,7 @@ PINTEREST TITLE RULES (2026):
 PINTEREST DESCRIPTION RULES (2026):
 1. MUST start with the primary keyword — first sentence contains keyword AND board niche reference.
 2. Include 2-3 LSI/related keywords naturally woven in.
-3. Length: 150-250 characters. NEVER exceed 300 characters.
+3. Length: 400-500 characters. Write 2-3 rich, engaging sentences. Use ALL available space — never write less than 350 characters. NEVER exceed 500 characters.
 4. Include 1-2 emojis placed naturally within text.
 5. End with a clear CTA (Save for later! / Click for the full guide! / Pin this for inspiration!).
 6. Finish with 3-5 niche-specific hashtags.
@@ -270,10 +270,11 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
     } catch (e) {
       console.error('Failed to generate complete SEO via AI:', e);
       const kw = input.keyword || input.topic || input.boardName || 'Amazing Idea';
+      const board = input.boardName || input.topic || 'inspiration';
       return {
         title: `${kw} ideas that will inspire you ✨`,
-        description: `${kw} made simple — everything you need to know in one place. Save for later! #${kw.replace(/\s+/g, '')} #Inspiration #DIY`,
-        altText: `${kw} showing creative details and design inspiration`
+        description: `${kw} is one of the most searched topics on Pinterest right now, and for good reason ✨ Whether you're just starting out or looking to level up your ${board} game, this pin has everything you need. Save it now and come back to it whenever you need fresh ideas! #${kw.replace(/\s+/g, '')} #${board.replace(/\s+/g, '')} #Inspiration #DIY #PinterestFinds`,
+        altText: `${kw} composition with detailed ${board} styling elements and creative design`
       };
     }
   }
@@ -507,7 +508,7 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
     throw new Error('AI Chat Completion failed after all attempts.');
   }
 
-  public async analyzeImage(imagePath: string, boardName?: string, topic?: string): Promise<{ title: string; description: string; altText: string }> {
+  public async analyzeImage(imagePath: string, boardName?: string, topic?: string, destinationUrl?: string): Promise<{ title: string; description: string; altText: string }> {
     const config = await this.getClientConfig();
     if (!config.apiKey) {
       throw new Error('AI Provider API Key is missing. Please configure your API key in Settings.');
@@ -524,13 +525,14 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
 
     const boardContext = boardName ? `\nIMPORTANT: This pin is for a Pinterest board called "${boardName}". The title, description, and alt text MUST be semantically relevant to this board's niche. The board name should appear naturally in the description.` : '';
     const topicContext = topic ? `\nUser's niche/topic: "${topic}".` : '';
+    const urlContext = destinationUrl ? `\nDestination URL: ${destinationUrl} — the description should naturally lead users to want to visit this link.` : '';
 
-    const prompt = `You are an elite Pinterest SEO expert trained on the 2026 Pinterest ranking algorithm. Analyze this image and generate PERFECT Pinterest pin metadata.${boardContext}${topicContext}
+    const prompt = `You are an elite Pinterest SEO expert trained on the 2026 Pinterest ranking algorithm. Analyze this image and generate PERFECT Pinterest pin metadata.${boardContext}${topicContext}${urlContext}
 
 Return ONLY a raw JSON object with these exact fields:
 {
   "title": "A search-optimized title (40-75 chars) that FRONT-LOADS the primary keyword in the first 3-5 words. Include 1 relevant emoji naturally. Use 1-2 power words (Easy, Stunning, DIY, Best, Modern, Cozy, etc). Write as the exact search query a Pinterest user would type. Sentence case only. Do NOT prefix with numbers.",
-  "description": "An engaging description (150-250 chars max) that STARTS with the primary keyword. Reference the board niche. Include 2-3 related keywords naturally. Add 1-2 emojis within the text. End with a CTA (Save for later! / Click for full details! / Pin this!). Finish with 3-5 niche-specific hashtags. Do NOT start with 'Discover', 'Check out', or 'Looking for'. Do NOT prefix with numbers.",
+  "description": "A rich, engaging description of 400-500 characters that STARTS with the primary keyword. Write 2-3 sentences covering the niche, related topics, and why this pin is valuable. Reference the board niche naturally. Include 2-3 related LSI keywords. Add 1-2 emojis within the text. End with a CTA (Save for later! / Click for full details! / Pin this!). Finish with 3-5 niche-specific hashtags. NEVER write less than 350 characters. Do NOT start with 'Discover', 'Check out', or 'Looking for'. Do NOT prefix with numbers.",
   "altText": "Concise descriptive alt text (80-200 chars) describing visual details — objects, colors, style, composition, setting. Include the primary keyword once naturally. Do NOT start with 'Image of' or 'Photo of'."
 }
 Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
@@ -657,12 +659,14 @@ Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
       }
     }
 
-    // Fallback
-    const fallbackName = path.basename(imagePath, path.extname(imagePath)).replace(/[-_]/g, ' ');
+    // Fallback — use board name and topic for richer content
+    const rawName = path.basename(imagePath, path.extname(imagePath)).replace(/[-_]/g, ' ').replace(/\b\d{4,}\b/g, '').replace(/\s+/g, ' ').trim();
+    const fallbackName = rawName || boardName || topic || 'Beautiful design';
+    const fallbackBoard = boardName || topic || 'inspiration';
     return {
-      title: `${fallbackName} inspiration ✨`,
-      description: `${fallbackName} ideas to transform your space. Save for later! #${fallbackName.replace(/\s+/g, '')} #Inspiration #Design`,
-      altText: `${fallbackName} showing creative composition and design details`
+      title: `${fallbackName} ideas you'll love ✨`,
+      description: `${fallbackName} is trending on Pinterest and it's easy to see why ✨ This pin brings together the best ${fallbackBoard} inspiration to help you get started. Whether you're a beginner or a seasoned pro, you'll find exactly what you're looking for here. Save it now for your next project! #${fallbackName.replace(/\s+/g, '')} #${fallbackBoard.replace(/\s+/g, '')} #Inspiration #PinterestFinds #Design`,
+      altText: `${fallbackName} with detailed ${fallbackBoard} styling, colors, and creative composition`
     };
   }
 }

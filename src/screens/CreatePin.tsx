@@ -478,10 +478,13 @@ export const CreatePin: React.FC<CreatePinProps> = ({
 
       if (action === 'analyzeImage') {
         onShowToast('Analyzing image with AI Vision + board context...', 'info');
+        // GAP-3 fix: fall back to aiTopic if no board selected yet
+        const boardForAnalysis = currentBoardName || aiTopic || '';
         const res = await api.callAI('analyzeImage', { 
           imagePath, 
-          boardName: currentBoardName,
-          topic: aiTopic || currentBoardName
+          boardName: boardForAnalysis,
+          topic: aiTopic || boardForAnalysis,
+          destinationUrl  // GAP-4 fix: pass destination URL for richer context
         });
         if (res) {
           if (res.title) setTitle(res.title);

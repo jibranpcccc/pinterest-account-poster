@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-07-06
+### Fixed — Full SEO Pipeline Audit (5 Gaps)
+- **GAP-1 🔴**: `generateSEOComplete` (used by "Generate All" button) now instructs AI to write 400-500 character descriptions instead of the old 150-250 char limit. All buttons now produce rich, long descriptions consistently.
+- **GAP-2 🔴**: `analyzeImage` (used by "Analyze Image" vision button) prompt updated from 150-250 chars to 400-500 chars so image analysis also produces long, SEO-rich descriptions.
+- **GAP-3 🟡**: If user hasn't selected a board yet when clicking "Analyze Image", the AI now falls back to the Topic/Keyword field as board context instead of sending an empty string. The AI always has niche context.
+- **GAP-4 🟡**: `destinationUrl` is now forwarded all the way through to `analyzeImage` (CreatePin → IPC → main.ts → openCodeProvider). The AI can now reference the destination link in the description.
+- **GAP-5 🟢**: Fallback strings (shown when AI API fails) completely rewritten — now include board name, rich multi-sentence text at 400+ chars, and proper niche-specific hashtags instead of generic 1-line placeholders.
+
 ## [1.0.3] - 2026-07-06
 ### Fixed
 - **Tab Switch State Loss**: Switching to another screen (Accounts, Queue, etc.) and coming back to Create Pin no longer wipes out uploaded images, AI results, or any data that was in progress. Previously the entire Create Pin component was destroyed and recreated every time you changed tabs. It is now kept alive in memory (hidden via CSS) so all state is perfectly preserved until you manually clear the form or submit.
