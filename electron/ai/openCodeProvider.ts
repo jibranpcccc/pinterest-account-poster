@@ -99,7 +99,7 @@ PINTEREST DESCRIPTION RULES (2026 Algorithm):
 1. FIRST SENTENCE — MUST start with the primary keyword. This is indexed most heavily. Make it a complete, compelling sentence.
 2. BOARD ANCHOR — naturally reference the board's niche within the first 2 sentences.
 3. SECONDARY KEYWORDS — include 2-3 LSI/related keywords that Pinterest users also search for. Weave them naturally.
-4. LENGTH — 150-250 characters is optimal. Pinterest shows ~232 chars before "more" in the feed. NEVER exceed 350 characters.
+4. LENGTH — 400-500 characters is optimal. Write 2-3 engaging paragraphs. Utilize the maximum space to tell a story or give context. NEVER exceed 500 characters.
 5. EMOJIS — 1-2 relevant emojis placed naturally within the text (not all clustered together).
 6. CALL-TO-ACTION — end with a clear CTA: "Save for later!", "Click for the full tutorial!", "Pin this for inspiration!", "Tap to see more!"
 7. HASHTAGS — add 3-5 niche-specific hashtags at the very end. Example: #ModernKitchen #KitchenIdeas #HomeDecor (NOT #viral #trending #pinterest).
@@ -189,7 +189,7 @@ RULES (2026 Pinterest Algorithm):
 
 CHECK ALL OF THE FOLLOWING:
 1. TITLE: Is it 40-75 chars? Does it front-load primary keyword in first 5 words? Does it have 1 power word? 1 emoji? Is it relevant to the board?
-2. DESCRIPTION: Is it 150-250 chars? Does it START with the primary keyword? Does it have a CTA? Does it have 3-5 niche hashtags (not generic)? Does it reference the board niche?
+2. DESCRIPTION: Is it 400-500 chars? Does it START with the primary keyword? Does it have a CTA? Does it have 3-5 niche hashtags (not generic)? Does it reference the board niche?
 3. SEMANTIC MATCH: Is title+description semantically relevant to the board name?
 4. KEYWORD STUFFING: Is the same keyword repeated more than 3 times across title+description?
 5. EMOJI COUNT: Are there 1-2 emojis total (not 0, not 5+)?
@@ -209,8 +209,8 @@ Each warning must say EXACTLY what to fix and HOW.`;
       const warnings: string[] = [];
       if (!input.title || input.title.length < 10) warnings.push('Title is too short. Write 40-75 characters with the primary keyword in the first 5 words.');
       if (input.title && input.title.length > 85) warnings.push('Title exceeds 85 characters and will be truncated in the Pinterest feed. Reduce to 75 chars max.');
-      if (!input.description || input.description.length < 50) warnings.push('Description is too short. Write 150-250 characters starting with your primary keyword.');
-      if (input.description && input.description.length > 350) warnings.push('Description is too long. Keep it under 250 characters for optimal Pinterest feed visibility.');
+      if (!input.description || input.description.length < 150) warnings.push('Description is too short. Write 400-500 characters starting with your primary keyword.');
+      if (input.description && input.description.length > 500) warnings.push('Description is too long. Keep it under 500 characters for optimal Pinterest feed visibility.');
       if (input.description && !input.description.includes('#')) warnings.push('Missing hashtags. Add 3-5 niche-specific hashtags at the end (e.g., #ModernKitchen #HomeDecor).');
       if (!input.destinationUrl || !input.destinationUrl.startsWith('http')) warnings.push('Destination URL is missing or invalid. Add a valid https:// URL to drive traffic to your site.');
       const emojiCount = (input.title || '').match(/\p{Emoji}/gu)?.length || 0;

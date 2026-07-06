@@ -747,7 +747,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           return;
         }
         const items = allImages.map((img, idx) => {
-          const cleanedName = img.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+          const cleanedName = img.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
           const sched = calculateSchedule(idx, allImages.length);
           return {
             imagePath: img.path,
@@ -774,7 +774,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
         return;
       }
       const items = bulkImages.map((img, idx) => {
-        const cleanedName = img.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+        const cleanedName = img.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
         const sched = calculateSchedule(idx, bulkImages.length);
         return {
           imagePath: img.path,
@@ -972,7 +972,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
 
         for (let i = 0; i < validItems.length; i++) {
           const item = validItems[i];
-          const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+          const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
 
           setBulkProgress({
             current: i + 1,
@@ -1091,7 +1091,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
 
         for (let i = 0; i < readyItems.length; i++) {
           const item = readyItems[i];
-          const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+          const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
 
           setBulkProgress({
             current: i + 1,

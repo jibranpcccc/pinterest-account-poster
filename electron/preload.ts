@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearLogs: () => ipcRenderer.invoke('db:clearLogs'),
   openLogFolder: () => ipcRenderer.invoke('sys:openLogFolder'),
 
+  // System
+  writeToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
+
   // AI Provider
   callAI: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
 

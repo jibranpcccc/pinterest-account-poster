@@ -30,13 +30,17 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
     }
   };
 
-  const handleCopyLink = (e: React.MouseEvent) => {
+  const handleCopyLink = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (job.livePinUrl) {
-      navigator.clipboard.writeText(job.livePinUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await window.electronAPI.writeToClipboard(job.livePinUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy to clipboard', err);
+      }
     }
   };
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, clipboard } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DbManager } from './database/db';
@@ -465,6 +465,10 @@ function registerIpcHandlers() {
   // System handlers
   ipcMain.handle('sys:openLogFolder', async () => {
     await shell.openPath(localDataDir);
+  });
+
+  ipcMain.handle('clipboard:write', async (_, text: string) => {
+    clipboard.writeText(text);
   });
 
   // AI handlers

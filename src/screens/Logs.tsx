@@ -44,7 +44,7 @@ export const Logs: React.FC<LogsProps> = ({
     fetchLogsFiltered();
   }, [levelFilter, searchQuery, logs]); // Sync with parent logs refresh
 
-  const handleCopyLogs = () => {
+  const handleCopyLogs = async () => {
     if (localLogs.length === 0) {
       onShowToast('No logs to copy.', 'warn');
       return;
@@ -55,7 +55,7 @@ export const Logs: React.FC<LogsProps> = ({
         .map((l) => `[${new Date(l.createdAt).toLocaleString()}] [${l.level.toUpperCase()}] ${l.message} ${l.context ? `| Context: ${l.context}` : ''}`)
         .join('\n');
       
-      navigator.clipboard.writeText(text);
+      await window.electronAPI.writeToClipboard(text);
       onShowToast('Logs copied to clipboard!', 'success');
     } catch (e: any) {
       onShowToast(`Copy failed: ${e.message}`, 'error');
