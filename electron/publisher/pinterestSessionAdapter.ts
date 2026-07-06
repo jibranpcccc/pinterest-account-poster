@@ -1,4 +1,5 @@
 import { chromium, BrowserContext } from 'playwright';
+import { getChromiumExecutablePath } from './chromiumPath';
 import * as path from 'path';
 import * as fs from 'fs';
 import { Account } from '../types';
@@ -35,6 +36,7 @@ export class PinterestSessionAdapter {
     const launchOptions: any = {
       headless: false,
       ...fpLaunchOpts,
+      executablePath: getChromiumExecutablePath(),
       args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
     };
 
@@ -133,6 +135,7 @@ export class PinterestSessionAdapter {
     const launchOptions: any = {
       headless: true,
       ...fpLaunchOpts,
+      executablePath: getChromiumExecutablePath(),
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
     };
 
@@ -248,6 +251,7 @@ export class PinterestSessionAdapter {
     const launchOptions: any = {
       headless: true,
       ...fpLaunchOpts,
+      executablePath: getChromiumExecutablePath(),
       args: ['--disable-blink-features=AutomationControlled'],
     };
 

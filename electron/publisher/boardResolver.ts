@@ -1,4 +1,5 @@
 import { chromium, BrowserContext } from 'playwright';
+import { getChromiumExecutablePath } from './chromiumPath';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Account, Board } from '../types';
@@ -33,6 +34,7 @@ export class BoardResolver {
       userAgent: fpOpts.userAgent,
       locale: fpOpts.locale,
       timezoneId: fpOpts.timezoneId,
+      executablePath: getChromiumExecutablePath(),
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
     };
 

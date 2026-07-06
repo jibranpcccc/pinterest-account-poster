@@ -1,4 +1,5 @@
 import { chromium, BrowserContext, Page } from 'playwright';
+import { getChromiumExecutablePath } from './chromiumPath';
 import * as fs from 'fs';
 import * as path from 'path';
 import { QueueJob, Account } from '../types';
@@ -131,6 +132,7 @@ export class PublishExecutor {
     const launchOptions: any = {
       headless,
       ...fpLaunchOpts,
+      executablePath: getChromiumExecutablePath(),
       args: ['--start-maximized', '--disable-blink-features=AutomationControlled']
     };
 
