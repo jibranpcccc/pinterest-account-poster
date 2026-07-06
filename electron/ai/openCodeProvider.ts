@@ -425,7 +425,7 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
           baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
         }
         if (!model || model === 'opencode-big-pickle') {
-          model = '@cf/mistralai/mistral-small-3.1-24b-instruct';
+          model = '@cf/moonshotai/kimi-k2.6';
         }
       }
 
@@ -496,7 +496,16 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
         const data = await response.json();
         
         if (isCloudflare) {
-          return data.result?.response || data.result || '';
+          const result = data.result;
+          if (result) {
+            if (result.choices && result.choices[0]?.message?.content) {
+              return result.choices[0].message.content;
+            }
+            if (result.response) return result.response;
+            if (result.text) return result.text;
+            if (typeof result === 'string') return result;
+          }
+          return JSON.stringify(data.result || '');
         } else {
           return data.choices?.[0]?.message?.content || '';
         }
@@ -642,7 +651,18 @@ Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
         const data = await response.json();
         let content = '';
         if (isCloudflareDirect) {
-          content = data.result?.response || data.result || '';
+          const result = data.result;
+          if (result) {
+            if (result.choices && result.choices[0]?.message?.content) {
+              content = result.choices[0].message.content;
+            } else if (result.response) {
+              content = result.response;
+            } else if (typeof result === 'string') {
+              content = result;
+            } else {
+              content = JSON.stringify(result);
+            }
+          }
         } else {
           content = data.choices?.[0]?.message?.content || '';
         }
