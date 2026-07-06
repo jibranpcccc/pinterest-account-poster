@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { version } from '../package.json';
 import { 
   LayoutDashboard, Users, FolderHeart, PlusCircle, 
   ListOrdered, FileText, ScrollText, Settings as SettingsIcon,
@@ -285,7 +286,7 @@ export default function App() {
               {connectedCount > 0 ? `${connectedCount} account${connectedCount > 1 ? 's' : ''} connected` : 'No accounts connected'}
             </span>
           </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 6, textAlign: 'center' }}>v1.0.0 · Safe Publishing Assistant</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 6, textAlign: 'center' }}>v{version} · Safe Publishing Assistant</div>
         </div>
       </aside>
 
