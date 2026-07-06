@@ -8,6 +8,8 @@ export interface Account {
   createdAt: string;
   updatedAt: string;
   lastUsedAt?: string | null;
+  username?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface Board {

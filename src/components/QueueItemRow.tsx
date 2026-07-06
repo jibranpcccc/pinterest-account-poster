@@ -93,11 +93,20 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
-              <div>
-                <span className="text-slate-550 mr-1 block text-[10px] uppercase font-semibold">Account:</span>
-                <span className="text-slate-300 font-medium truncate block max-w-[120px]" title={account?.nickname || 'Unknown Account'}>
-                  {account?.nickname || 'Unknown Account'}
-                </span>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-slate-900 border border-slate-800 text-[10px] font-bold text-slate-350 flex-shrink-0">
+                  {account?.avatarUrl ? (
+                    <img src={account.avatarUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    (account?.nickname || 'U').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <span className="text-slate-550 block text-[9px] uppercase font-semibold leading-none">Account:</span>
+                  <span className="text-slate-350 font-medium truncate block max-w-[120px] mt-0.5 leading-tight" title={account?.nickname ? `${account.nickname}${account.username ? ` (@${account.username})` : ''}` : 'Unknown Account'}>
+                    {account?.nickname || 'Unknown Account'}
+                  </span>
+                </div>
               </div>
               <div>
                 <span className="text-slate-550 mr-1 block text-[10px] uppercase font-semibold">Board:</span>

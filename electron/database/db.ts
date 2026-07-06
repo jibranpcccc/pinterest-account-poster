@@ -134,7 +134,9 @@ export class DbManager {
         sessionStatus TEXT NOT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        lastUsedAt TEXT
+        lastUsedAt TEXT,
+        username TEXT,
+        avatarUrl TEXT
       )
     `);
 
@@ -219,6 +221,12 @@ export class DbManager {
       if (!accountsColNames.includes('password')) {
         await this.driver.run('ALTER TABLE accounts ADD COLUMN password TEXT');
       }
+      if (!accountsColNames.includes('username')) {
+        await this.driver.run('ALTER TABLE accounts ADD COLUMN username TEXT');
+      }
+      if (!accountsColNames.includes('avatarUrl')) {
+        await this.driver.run('ALTER TABLE accounts ADD COLUMN avatarUrl TEXT');
+      }
 
       const queueCols = await this.driver.query<{ name: string }>('PRAGMA table_info(queue_jobs)');
       const queueColNames = queueCols.map(c => c.name);
@@ -273,13 +281,36 @@ export class DbManager {
     const now = new Date().toISOString();
     if (existing.length > 0) {
       await this.driver.run(
-        'UPDATE accounts SET nickname = ?, email = ?, password = ?, profilePath = ?, sessionStatus = ?, updatedAt = ?, lastUsedAt = ? WHERE id = ?',
-        [account.nickname, account.email || null, account.password || null, account.profilePath, account.sessionStatus, now, account.lastUsedAt || existing[0].lastUsedAt, account.id]
+        'UPDATE accounts SET nickname = ?, email = ?, password = ?, profilePath = ?, sessionStatus = ?, updatedAt = ?, lastUsedAt = ?, username = ?, avatarUrl = ? WHERE id = ?',
+        [
+          account.nickname,
+          account.email || null,
+          account.password || null,
+          account.profilePath,
+          account.sessionStatus,
+          now,
+          account.lastUsedAt || existing[0].lastUsedAt,
+          account.username || null,
+          account.avatarUrl || null,
+          account.id
+        ]
       );
     } else {
       await this.driver.run(
-        'INSERT INTO accounts (id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [account.id, account.nickname, account.email || null, account.password || null, account.profilePath, account.sessionStatus, now, now, account.lastUsedAt || null]
+        'INSERT INTO accounts (id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt, username, avatarUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          account.id,
+          account.nickname,
+          account.email || null,
+          account.password || null,
+          account.profilePath,
+          account.sessionStatus,
+          now,
+          now,
+          account.lastUsedAt || null,
+          account.username || null,
+          account.avatarUrl || null
+        ]
       );
     }
     const results = await this.driver.query<Account>('SELECT * FROM accounts WHERE id = ?', [account.id]);

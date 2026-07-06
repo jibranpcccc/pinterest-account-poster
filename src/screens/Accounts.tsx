@@ -170,15 +170,26 @@ export const Accounts: React.FC<AccountsProps> = ({
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       border: `2px solid ${isConnected ? 'rgba(52,211,153,0.3)' : 'rgba(99,102,241,0.2)'}`,
                       fontSize: 18, fontWeight: 900, color: '#fff',
-                      boxShadow: isConnected ? '0 0 16px rgba(52,211,153,0.2)' : 'none'
+                      boxShadow: isConnected ? '0 0 16px rgba(52,211,153,0.2)' : 'none',
+                      overflow: 'hidden'
                     }}>
-                      {account.nickname.charAt(0).toUpperCase()}
+                      {account.avatarUrl ? (
+                        <img src={account.avatarUrl} alt={account.nickname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        account.nickname.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div>
                       <h3 style={{ fontSize: 14, fontWeight: 800, color: '#fff', margin: 0 }}>{account.nickname}</h3>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
-                        ID: {account.id.substring(0, 12)}...
-                      </span>
+                      {account.username ? (
+                        <span style={{ fontSize: 11, color: '#34d399', fontWeight: 700, display: 'block', marginTop: 2 }}>
+                          @{account.username}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace', display: 'block', marginTop: 2 }}>
+                          ID: {account.id.substring(0, 12)}...
+                        </span>
+                      )}
                     </div>
                   </div>
 

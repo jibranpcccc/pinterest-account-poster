@@ -159,19 +159,42 @@ export class JsonDriver implements DbDriver {
 
     // Accounts operations
     if (lowerSql.startsWith('insert into accounts')) {
-      // (id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt)
-      const [id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt] = params;
-      this.state.accounts.push({ id, nickname, email: email || null, password: password || null, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt: lastUsedAt || null });
+      // (id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt, username, avatarUrl)
+      const [id, nickname, email, password, profilePath, sessionStatus, createdAt, updatedAt, lastUsedAt, username, avatarUrl] = params;
+      this.state.accounts.push({ 
+        id, 
+        nickname, 
+        email: email || null, 
+        password: password || null, 
+        profilePath, 
+        sessionStatus, 
+        createdAt, 
+        updatedAt, 
+        lastUsedAt: lastUsedAt || null,
+        username: username || null,
+        avatarUrl: avatarUrl || null
+      });
       this.saveState();
       return { lastID: id, changes: 1 };
     }
 
     if (lowerSql.startsWith('update accounts set')) {
-      // UPDATE accounts SET nickname = ?, email = ?, password = ?, profilePath = ?, sessionStatus = ?, updatedAt = ?, lastUsedAt = ? WHERE id = ?
-      const [nickname, email, password, profilePath, sessionStatus, updatedAt, lastUsedAt, id] = params;
+      // UPDATE accounts SET nickname = ?, email = ?, password = ?, profilePath = ?, sessionStatus = ?, updatedAt = ?, lastUsedAt = ?, username = ?, avatarUrl = ? WHERE id = ?
+      const [nickname, email, password, profilePath, sessionStatus, updatedAt, lastUsedAt, username, avatarUrl, id] = params;
       const idx = this.state.accounts.findIndex(a => a.id === id);
       if (idx !== -1) {
-        this.state.accounts[idx] = { ...this.state.accounts[idx], nickname, email: email || null, password: password || null, profilePath, sessionStatus, updatedAt, lastUsedAt: lastUsedAt || null };
+        this.state.accounts[idx] = { 
+          ...this.state.accounts[idx], 
+          nickname, 
+          email: email || null, 
+          password: password || null, 
+          profilePath, 
+          sessionStatus, 
+          updatedAt, 
+          lastUsedAt: lastUsedAt || null,
+          username: username || null,
+          avatarUrl: avatarUrl || null
+        };
         this.saveState();
         return { lastID: id, changes: 1 };
       }

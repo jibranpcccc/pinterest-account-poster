@@ -1477,10 +1477,24 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                             checked={isSelected}
                             onChange={() => handleToggleAccount(acc.id)}
                           />
-                          <label htmlFor={`chk-${acc.id}`} className="flex flex-col cursor-pointer">
-                            <span className="text-xs font-bold text-slate-200">{acc.nickname}</span>
-                            <span className="text-[10px] text-slate-350 font-mono capitalize">Status: {acc.sessionStatus}</span>
-                          </label>
+                          <div className="flex items-center gap-2">
+                            {/* Avatar */}
+                            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-slate-900 border border-slate-805 text-xs font-bold text-slate-200 flex-shrink-0">
+                              {acc.avatarUrl ? (
+                                <img src={acc.avatarUrl} alt={acc.nickname} className="w-full h-full object-cover" />
+                              ) : (
+                                acc.nickname.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <label htmlFor={`chk-${acc.id}`} className="flex flex-col cursor-pointer">
+                              <span className="text-xs font-bold text-slate-200">{acc.nickname}</span>
+                              {acc.username ? (
+                                <span className="text-[10px] text-emerald-450 font-semibold">@{acc.username}</span>
+                              ) : (
+                                <span className="text-[10px] text-slate-350 font-mono capitalize">Status: {acc.sessionStatus}</span>
+                              )}
+                            </label>
+                          </div>
                         </div>                        {isSelected && (
                           <div className="w-full md:w-64 flex flex-col gap-1">
                             <label className="text-[9px] uppercase font-bold text-slate-400">Target Board</label>
@@ -2381,9 +2395,24 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                             checked={isSelected}
                             onChange={() => handleToggleAccount(acc.id)}
                           />
-                          <label htmlFor={`bulk-chk-${acc.id}`} className="text-xs font-bold text-slate-200 cursor-pointer">
-                            {acc.nickname}
-                          </label>
+                          <div className="flex items-center gap-2">
+                            {/* Avatar */}
+                            <div className="w-7 h-7 rounded overflow-hidden flex items-center justify-center bg-slate-900 border border-slate-805 text-xs font-bold text-slate-200 flex-shrink-0">
+                              {acc.avatarUrl ? (
+                                <img src={acc.avatarUrl} alt={acc.nickname} className="w-full h-full object-cover" />
+                              ) : (
+                                acc.nickname.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <label htmlFor={`bulk-chk-${acc.id}`} className="flex flex-col cursor-pointer">
+                              <span className="text-xs font-bold text-slate-200 leading-tight">{acc.nickname}</span>
+                              {acc.username ? (
+                                <span className="text-[9px] text-emerald-455 font-semibold leading-none">@{acc.username}</span>
+                              ) : (
+                                <span className="text-[9px] text-slate-350 font-mono capitalize leading-none">Status: {acc.sessionStatus}</span>
+                              )}
+                            </label>
+                          </div>
                         </div>
                         {isSelected && (
                           <div>

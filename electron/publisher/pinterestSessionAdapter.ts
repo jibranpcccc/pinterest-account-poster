@@ -75,10 +75,13 @@ export class PinterestSessionAdapter {
           console.log(`🔒 Verifying session for ${account.nickname}...`);
           const isConnected = await this.verifySession(account);
           
-          // verifySession already saves the account status to DB.
+          // Retrieve the updated account details from DB (including the scraped username/avatarUrl)
+          const updatedAccounts = await this.db.getAccounts();
+          const dbAccount = updatedAccounts.find(a => a.id === account.id) || account;
+
           // Double-save here with lastUsedAt update for consistency.
           await this.db.saveAccount({
-            ...account,
+            ...dbAccount,
             sessionStatus: isConnected ? 'connected' : 'disconnected',
             lastUsedAt: new Date().toISOString()
           });
@@ -114,6 +117,39 @@ export class PinterestSessionAdapter {
       }
       return false;
     }
+  }
+
+  private async scrapeProfileInfo(page: any, nickname: string): Promise<{ username: string | null; avatarUrl: string | null }> {
+    let username: string | null = null;
+    let avatarUrl: string | null = null;
+    try {
+      // 1. Scrape username from header profile button link
+      const profileLinkLocator = page.locator('a[data-test-id="header-profile-button"], [data-test-id="header-profile-button"] a, a[aria-label*="profile"], a[aria-label*="Profile"]').first();
+      if (await profileLinkLocator.isVisible()) {
+        const href = await profileLinkLocator.getAttribute('href');
+        if (href) {
+          const cleanedHref = href.split('/').filter(Boolean);
+          if (cleanedHref.length > 0) {
+            // Pinterest handles are always the first path segment (e.g. /username/)
+            username = cleanedHref[0];
+          }
+        }
+      }
+
+      // 2. Scrape avatar picture from header profile button image
+      const profileImgLocator = page.locator('[data-test-id="header-profile-button"] img, [data-test-id="header-profile"] img, a[aria-label*="profile"] img, a[aria-label*="Profile"] img').first();
+      if (await profileImgLocator.isVisible()) {
+        const src = await profileImgLocator.getAttribute('src');
+        if (src) {
+          avatarUrl = src;
+        }
+      }
+      
+      console.log(`[Scraper] Scraped details for ${nickname}: username='${username}', avatarUrl='${avatarUrl}'`);
+    } catch (scrapeErr: any) {
+      console.warn(`[Scraper] Failed to scrape profile info for ${nickname}: ${scrapeErr.message}`);
+    }
+    return { username, avatarUrl };
   }
 
   /**
@@ -205,11 +241,21 @@ export class PinterestSessionAdapter {
 
       console.log(`🔍 Session for '${account.nickname}': ${isLoggedIn ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
       
+      let username = account.username || null;
+      let avatarUrl = account.avatarUrl || null;
+      if (isLoggedIn) {
+        const profile = await this.scrapeProfileInfo(page, account.nickname);
+        if (profile.username) username = profile.username;
+        if (profile.avatarUrl) avatarUrl = profile.avatarUrl;
+      }
+
       // Update account status in DB
       await this.db.saveAccount({
         ...account,
         sessionStatus: isLoggedIn ? 'connected' : 'disconnected',
-        lastUsedAt: new Date().toISOString()
+        lastUsedAt: new Date().toISOString(),
+        username,
+        avatarUrl
       });
 
       return isLoggedIn;
@@ -346,10 +392,20 @@ export class PinterestSessionAdapter {
         ) && !currentUrl.includes('/login') && !currentUrl.includes('/auth/');
       }
       
+      let username = account.username || null;
+      let avatarUrl = account.avatarUrl || null;
+      if (isLoggedIn) {
+        const profile = await this.scrapeProfileInfo(page, account.nickname);
+        if (profile.username) username = profile.username;
+        if (profile.avatarUrl) avatarUrl = profile.avatarUrl;
+      }
+
       await this.db.saveAccount({
         ...account,
         sessionStatus: isLoggedIn ? 'connected' : 'disconnected',
-        lastUsedAt: new Date().toISOString()
+        lastUsedAt: new Date().toISOString(),
+        username,
+        avatarUrl
       });
 
       if (isLoggedIn) {
