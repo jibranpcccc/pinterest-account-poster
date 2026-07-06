@@ -29,7 +29,7 @@ export class OpenCodeProvider {
   private async getClientConfig() {
     const settings = await this.db.getSettings();
     return {
-      enabled: settings.aiEnabled === true,
+      enabled: settings.aiEnabled !== false, // Default to true unless explicitly false
       apiKey: settings.aiApiKey || process.env.OPENCODE_API_KEY || '',
       baseUrl: settings.aiBaseUrl || process.env.OPENCODE_BASE_URL || 'https://api.opencode.dev/v1',
       model: settings.aiModel || process.env.OPENCODE_MODEL || 'opencode-big-pickle',
@@ -396,13 +396,13 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
   }
 
   private async makeChatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    // 1. Sync keys pool first to populate DB settings if empty
+    const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
+
     const config = await this.getClientConfig();
     if (!config.enabled) {
       throw new Error('AI Assist is disabled. Please check Settings.');
     }
-
-    // Use cached key pool
-    const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
     
     let attempts = 0;
     const maxAttempts = Math.max(1, Math.min(5, workingPool.length || 1));
@@ -524,8 +524,17 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
   }
 
   public async analyzeImage(imagePath: string, boardName?: string, topic?: string, destinationUrl?: string): Promise<{ title: string; description: string; altText: string }> {
+    // 1. Sync keys pool first to populate DB settings if empty
+    const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
+
     const config = await this.getClientConfig();
-    if (!config.apiKey) {
+    const hasPool = workingPool.length > 0;
+
+    if (!config.enabled) {
+      throw new Error('AI Assist is disabled. Please check Settings.');
+    }
+
+    if (!config.apiKey && !hasPool) {
       throw new Error('AI Provider API Key is missing. Please configure your API key in Settings.');
     }
 
@@ -552,7 +561,6 @@ Return ONLY a raw JSON object with these exact fields:
 }
 Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
 
-    const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
     
     let attempts = 0;
     const maxAttempts = Math.max(1, Math.min(5, workingPool.length || 1));
