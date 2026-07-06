@@ -305,9 +305,8 @@ export default function App() {
           {activeScreen === 'boards' && (
             <Boards accounts={accounts} onShowToast={showToast} />
           )}
-          {/* CreatePin is ALWAYS mounted to preserve images/AI state when switching tabs */}
           <div style={{ display: activeScreen === 'create' ? 'block' : 'none' }}>
-            <CreatePin accounts={accounts} drafts={drafts} onSaveDraft={handleSaveDraft} onAddQueueJob={handleAddQueueJob} onNavigate={handleNavigate} onShowToast={showToast} editingDraft={editingDraft} clearEditingDraft={() => setEditingDraft(null)} />
+            <CreatePin accounts={accounts} drafts={drafts} onSaveDraft={handleSaveDraft} onAddQueueJob={handleAddQueueJob} onNavigate={handleNavigate} onShowToast={showToast} editingDraft={editingDraft} clearEditingDraft={() => setEditingDraft(null)} activeScreen={activeScreen} />
           </div>
           {activeScreen === 'queue' && (
             <Queue accounts={accounts} queue={queue} onRefreshQueue={fetchQueue} onShowToast={showToast} />

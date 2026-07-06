@@ -22,6 +22,7 @@ interface CreatePinProps {
   onShowToast: (msg: string, type: 'success' | 'error' | 'warn' | 'info') => void;
   editingDraft: Draft | null;
   clearEditingDraft: () => void;
+  activeScreen?: string;
 }
 
 export const CreatePin: React.FC<CreatePinProps> = ({
@@ -32,7 +33,8 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   onNavigate,
   onShowToast,
   editingDraft,
-  clearEditingDraft
+  clearEditingDraft,
+  activeScreen
 }) => {
   // Tab selection
   const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single');
@@ -256,10 +258,10 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       setAccountBoards(mappings);
     };
 
-    if (selectedAccountIds.length > 0) {
+    if (selectedAccountIds.length > 0 && activeScreen === 'create') {
       fetchBoardsForAccounts();
     }
-  }, [selectedAccountIds]);
+  }, [selectedAccountIds, accounts, activeScreen]);
 
   // Handle local image file picker (Single Mode)
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
