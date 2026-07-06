@@ -413,14 +413,20 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
       let apiKey = config.apiKey;
       let baseUrl = config.baseUrl;
       let accountId = '';
+      let model = config.model;
 
       const isCloudflare = config.baseUrl.includes('cloudflare.com') || config.apiKey.startsWith('cfut_') || (workingPool.length > 0 && !config.apiKey);
       
-      if (isCloudflare && workingPool.length > 0) {
-        const selectedCred = workingPool[Math.floor(Math.random() * workingPool.length)];
-        apiKey = selectedCred.token;
-        accountId = selectedCred.accountId;
-        baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
+      if (isCloudflare) {
+        if (workingPool.length > 0) {
+          const selectedCred = workingPool[Math.floor(Math.random() * workingPool.length)];
+          apiKey = selectedCred.token;
+          accountId = selectedCred.accountId;
+          baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
+        }
+        if (!model || model === 'opencode-big-pickle') {
+          model = '@cf/mistralai/mistral-small-3.1-24b-instruct';
+        }
       }
 
       if (!apiKey) {
@@ -434,7 +440,7 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
         let response: Response;
         
         if (isCloudflare) {
-          const runUrl = `${baseUrl.replace(/\/+$/, '')}/${config.model}`;
+          const runUrl = `${baseUrl.replace(/\/+$/, '')}/${model}`;
           response = await fetch(runUrl, {
             method: 'POST',
             headers: {
@@ -458,7 +464,7 @@ OUTPUT FORMAT — Return ONLY this raw JSON object, nothing else:
               'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              model: config.model,
+              model: model,
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
@@ -570,7 +576,7 @@ Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
         const isCloudflareDirect = baseUrl.includes('cloudflare.com') && !baseUrl.endsWith('/v1') && !baseUrl.includes('/chat/completions');
 
         if (isCloudflareDirect) {
-          const runUrl = `${baseUrl.replace(/\/+$/, '')}/@cf/meta/llama-4-scout-17b-16e-instruct`;
+          const runUrl = `${baseUrl.replace(/\/+$/, '')}/@cf/moonshotai/kimi-k2.6`;
           response = await fetch(runUrl, {
             method: 'POST',
             headers: {
@@ -599,7 +605,7 @@ Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
               'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              model: '@cf/meta/llama-4-scout-17b-16e-instruct',
+              model: '@cf/moonshotai/kimi-k2.6',
               messages: [
                 {
                   role: 'user',

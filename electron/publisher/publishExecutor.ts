@@ -79,12 +79,10 @@ export class PublishExecutor {
     }
   }
 
-  /**
-   * Safe typing helper with human-like delay between keystrokes.
-   */
   private async typeSlowly(page: Page, selector: string, text: string, delayMin = 20, delayMax = 60) {
     const element = page.locator(selector).first();
-    await element.click();
+    await element.focus().catch(() => {});
+    await element.click({ force: true }).catch(() => {});
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Backspace');
     await this.sleep(200);
