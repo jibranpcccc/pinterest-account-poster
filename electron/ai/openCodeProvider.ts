@@ -598,7 +598,10 @@ Return ONLY the raw JSON. No markdown, no code blocks, no extra text.`;
                   role: 'user',
                   content: [
                     { type: 'text', text: prompt },
-                    { type: 'image', image: Array.from(imageBuffer) }
+                    {
+                      type: 'image_url',
+                      image_url: { url: `data:${mimeType};base64,${base64Image}` }
+                    }
                   ]
                 }
               ]

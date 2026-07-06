@@ -94,6 +94,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [bulkAiMode, setBulkAiMode] = useState(false);
   const [bulkDefaultUrl, setBulkDefaultUrl] = useState('');
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; message: string } | null>(null);
+  const [isGeneratingBulkAI, setIsGeneratingBulkAI] = useState(false);
 
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkScheduleDays, setBulkScheduleDays] = useState('1');
@@ -1062,6 +1063,89 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     }
   };
 
+  const handleGenerateBulkAI = async () => {
+    const readyItems = matchedItems.filter(item => item.status === 'ready');
+    if (readyItems.length === 0) {
+      onShowToast('No ready items found to generate AI SEO.', 'warn');
+      return;
+    }
+    
+    setIsGeneratingBulkAI(true);
+    setBulkProgress({ current: 0, total: readyItems.length, message: 'Initializing Kimi K2.6 Vision analysis...' });
+    
+    try {
+      let updatedItems = [...matchedItems];
+      let genCount = 0;
+
+      for (let i = 0; i < updatedItems.length; i++) {
+        const item = updatedItems[i];
+        if (item.status !== 'ready') continue;
+
+        const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
+        
+        setBulkProgress({
+          current: genCount + 1,
+          total: readyItems.length,
+          message: `Analyzing image: "${cleanedName}" using Kimi K2.6...`
+        });
+
+        const firstAccId = selectedAccountIds[0];
+        const itemBoardName = item.batchBoardName || accountBoards[firstAccId]?.boardName || 'Pinterest Pins';
+
+        let aiTitle = '';
+        let aiDesc = '';
+        let aiAlt = '';
+
+        try {
+          const seo = await api.callAI('analyzeImage', {
+            imagePath: item.imagePath,
+            boardName: itemBoardName,
+            topic: itemBoardName,
+            destinationUrl: item.destinationUrl || bulkDefaultUrl
+          });
+          
+          aiTitle = seo?.title || `Beautiful ${cleanedName}`;
+          aiDesc = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
+          aiAlt = seo?.altText || `Visual representation of ${cleanedName}`;
+        } catch (aiErr) {
+          console.error(`AI Vision failed for ${item.filename}, trying text fallback:`, aiErr);
+          try {
+            const seo = await api.callAI('generateSEOComplete', {
+              topic: itemBoardName,
+              keyword: cleanedName,
+              tone: 'Inspirational',
+              audience: 'General Pinterest users',
+              imageNotes: cleanedName
+            });
+            aiTitle = seo?.title || `Beautiful ${cleanedName}`;
+            aiDesc = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
+            aiAlt = seo?.altText || `Visual representation of ${cleanedName}`;
+          } catch (textErr) {
+            aiTitle = cleanedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            aiDesc = `Discover inspiration about ${cleanedName}. Check out our board for more details.`;
+            aiAlt = `Image showing ${cleanedName}`;
+          }
+        }
+
+        updatedItems[i] = {
+          ...item,
+          title: aiTitle,
+          description: aiDesc,
+          altText: aiAlt
+        };
+        
+        setMatchedItems([...updatedItems]);
+        genCount++;
+      }
+      onShowToast(`Successfully generated AI SEO for ${genCount} items!`, 'success');
+    } catch (e: any) {
+      onShowToast(`AI generation failed: ${e.message}`, 'error');
+    } finally {
+      setIsGeneratingBulkAI(false);
+      setBulkProgress(null);
+    }
+  };
+
   const handleBulkAddToQueue = async (runNow: boolean = false) => {
     const readyItems = matchedItems.filter(item => item.status === 'ready');
     if (readyItems.length === 0) {
@@ -1091,115 +1175,80 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       let jobsCreated = 0;
       const addedJobIds: string[] = [];
 
-      if (bulkAiMode) {
-        setBulkProgress({ current: 0, total: readyItems.length, message: 'Starting AI metadata generation...' });
+      setBulkProgress({ current: 0, total: readyItems.length, message: 'Processing queue items...' });
 
-        for (let i = 0; i < readyItems.length; i++) {
-          const item = readyItems[i];
+      for (let i = 0; i < readyItems.length; i++) {
+        const item = readyItems[i];
+        
+        let titleVal = item.title;
+        let descVal = item.description;
+        let altVal = item.altText;
+
+        // On-the-fly generation if not pre-generated
+        if (bulkAiMode && (titleVal.startsWith('AI: [Auto Title') || !titleVal)) {
           const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
-
+          
           setBulkProgress({
             current: i + 1,
             total: readyItems.length,
-            message: `Generating AI Title and Description for image ${i + 1} of ${readyItems.length}: "${cleanedName}"...`
+            message: `Analyzing image ${i + 1} of ${readyItems.length}: "${cleanedName}"...`
           });
 
-          // Use per-item batch board when available
           const firstAccId = selectedAccountIds[0];
           const itemBoardName = item.batchBoardName || accountBoards[firstAccId]?.boardName || 'Pinterest Pins';
 
-          const payload = {
-            topic: itemBoardName,
-            keyword: cleanedName,
-            tone: 'Inspirational',
-            audience: 'General Pinterest users',
-            imageNotes: cleanedName
-          };
-
-          let aiTitle = '';
-          let aiDesc = '';
-          let aiAlt = '';
-
           try {
-            // Call AI
-            const seo = await api.callAI('generateSEOComplete', payload);
-            aiTitle = seo?.title || `Beautiful ${cleanedName}`;
-            aiDesc = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
-            aiAlt = seo?.altText || `Visual representation of ${cleanedName}`;
-          } catch (aiErr: any) {
-            console.error('AI generation failed for item, using fallback:', aiErr);
-            aiTitle = cleanedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            aiDesc = `Discover inspiration about ${cleanedName}. Check out our board for more details.`;
-            aiAlt = `Image showing ${cleanedName}`;
-          }
-
-          // Cross-account scheduling: each account gets a 15-minute offset
-          for (let accIdx = 0; accIdx < selectedAccountIds.length; accIdx++) {
-            const accId = selectedAccountIds[accIdx];
-            const accBoard = accountBoards[accId] || { boardName: '', boardUrl: '' };
-            const useBoardName = item.batchBoardName || accBoard.boardName;
-            const useBoardUrl = item.batchBoardUrl || accBoard.boardUrl;
-            const accountOffset = accIdx * 15; // 15 min gap between accounts
-            const sched = bulkScheduleMode
-              ? calculateSchedule(i, readyItems.length, accountOffset, selectedAccountIds.length)
-              : { date: item.scheduledDate, time: item.scheduledTime };
-            
-            const job = await onAddQueueJob({
-              accountId: accId,
-              boardName: useBoardName,
-              boardUrl: useBoardUrl,
+            const seo = await api.callAI('analyzeImage', {
               imagePath: item.imagePath,
-              title: aiTitle,
-              description: aiDesc,
-              destinationUrl: item.destinationUrl || '',
-              altText: aiAlt,
-              notes: `Bulk AI → ${useBoardName}`,
-              status: 'pending',
-              scheduledDate: sched.date || null,
-              scheduledTime: sched.time || null
+              boardName: itemBoardName,
+              topic: itemBoardName,
+              destinationUrl: item.destinationUrl || bulkDefaultUrl
             });
-            addedJobIds.push(job.id);
-            jobsCreated++;
+            titleVal = seo?.title || `Beautiful ${cleanedName}`;
+            descVal = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
+            altVal = seo?.altText || `Visual representation of ${cleanedName}`;
+          } catch (aiErr) {
+            console.error(`On-the-fly AI failed for ${item.filename}, using fallback:`, aiErr);
+            titleVal = cleanedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            descVal = `Discover inspiration about ${cleanedName}. Check out our board for more details.`;
+            altVal = `Image showing ${cleanedName}`;
           }
         }
 
-        setBulkProgress(null);
-      } else {
-        // Standard Excel import with cross-account scheduling
-        for (let itemIdx = 0; itemIdx < readyItems.length; itemIdx++) {
-          const item = readyItems[itemIdx];
-          for (let accIdx = 0; accIdx < selectedAccountIds.length; accIdx++) {
-            const accId = selectedAccountIds[accIdx];
-            const boardMapping = accountBoards[accId];
-            const accountOffset = accIdx * 15; // 15 min gap between accounts
-            const sched = bulkScheduleMode
-              ? calculateSchedule(itemIdx, readyItems.length, accountOffset, selectedAccountIds.length)
-              : { date: item.scheduledDate, time: item.scheduledTime };
-
-            const job = await onAddQueueJob({
-              accountId: accId,
-              boardName: boardMapping.boardName,
-              boardUrl: boardMapping.boardUrl,
-              imagePath: item.imagePath,
-              title: item.title,
-              description: item.description,
-              destinationUrl: item.destinationUrl,
-              altText: item.altText,
-              notes: `Bulk CSV | Account ${accIdx + 1}/${selectedAccountIds.length} | Offset: +${accountOffset}min`,
-              status: 'pending',
-              scheduledDate: sched.date || null,
-              scheduledTime: sched.time || null
-            });
-            addedJobIds.push(job.id);
-            jobsCreated++;
-          }
+        // Cross-account scheduling: each account gets a 15-minute offset
+        for (let accIdx = 0; accIdx < selectedAccountIds.length; accIdx++) {
+          const accId = selectedAccountIds[accIdx];
+          const accBoard = accountBoards[accId] || { boardName: '', boardUrl: '' };
+          const useBoardName = item.batchBoardName || accBoard.boardName;
+          const useBoardUrl = item.batchBoardUrl || accBoard.boardUrl;
+          const accountOffset = accIdx * 15; // 15 min gap between accounts
+          const sched = bulkScheduleMode
+            ? calculateSchedule(i, readyItems.length, accountOffset, selectedAccountIds.length)
+            : { date: item.scheduledDate, time: item.scheduledTime };
+          
+          const job = await onAddQueueJob({
+            accountId: accId,
+            boardName: useBoardName,
+            boardUrl: useBoardUrl,
+            imagePath: item.imagePath,
+            title: titleVal,
+            description: descVal,
+            destinationUrl: item.destinationUrl || bulkDefaultUrl,
+            altText: altVal,
+            notes: `Bulk Upload | Row ${item.rowIdx + 1}`,
+            status: 'pending',
+            scheduledDate: sched.date || null,
+            scheduledTime: sched.time || null
+          });
+          addedJobIds.push(job.id);
+          jobsCreated++;
         }
       }
 
       resetBulkState();
       onNavigate('queue');
 
-      if (runNow) {
+      if (runNow && addedJobIds.length > 0) {
         onShowToast(`Successfully enqueued ${jobsCreated} jobs. Starting direct publishing...`, 'info');
         await api.startQueueExecution(addedJobIds);
       } else {
@@ -2500,6 +2549,19 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               subtitle={`Simulated matches: ${matchedItems.length} rows`}
               headerAction={
                 <div className="flex gap-2 flex-wrap">
+                  {bulkAiMode && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleGenerateBulkAI}
+                      loading={isGeneratingBulkAI}
+                      disabled={matchedItems.length === 0 || isParsing || isGeneratingBulkAI}
+                      icon={<Sparkles className="w-3.5 h-3.5 text-purple-450" />}
+                      className="bg-violet-950/40 border border-violet-905/40 text-violet-300 hover:bg-violet-900/40"
+                    >
+                      Generate AI SEO ({matchedItems.filter(i => i.status === 'ready').length})
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -2562,11 +2624,18 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                         </div>
 
                         {/* Text fields */}
-                        <div className="min-w-0 flex-grow text-xs text-slate-350">
-                          <div className="flex justify-between items-start gap-3">
-                            <h4 className="font-bold text-slate-200 truncate leading-normal" title={item.title}>
-                              {item.title || <span className="italic text-slate-550">Untitled Row</span>}
-                            </h4>
+                        <div className="min-w-0 flex-grow text-xs flex flex-col gap-2">
+                          <div className="flex justify-between items-center gap-3">
+                            <input
+                              type="text"
+                              className="font-bold text-slate-200 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-violet-500/50"
+                              value={item.title}
+                              onChange={(e) => {
+                                const newTitle = e.target.value;
+                                setMatchedItems(prev => prev.map((it, i) => i === idx ? { ...it, title: newTitle, status: !newTitle ? 'missing_title' : (it.imagePath ? 'ready' : 'missing_image') } : it));
+                              }}
+                              placeholder="Pin Title"
+                            />
                             {item.status === 'ready' && (
                               <span className="bg-emerald-955/20 text-emerald-400 border border-emerald-900/40 px-2 py-0.5 rounded text-[9px] font-black uppercase flex items-center gap-0.5 flex-shrink-0">
                                 <Check className="w-2.5 h-2.5" /> Ready
@@ -2584,19 +2653,43 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                             )}
                           </div>
                           
-                          <p className="text-[11px] text-slate-450 line-clamp-2 mt-1 leading-normal" title={item.description}>
-                            {item.description || <span className="italic text-slate-600">No description text.</span>}
-                          </p>
+                          <textarea
+                            className="text-[11px] text-slate-350 bg-slate-950 border border-slate-800 rounded px-2 py-1 w-full h-12 focus:outline-none focus:border-violet-500/50 resize-y"
+                            value={item.description}
+                            onChange={(e) => {
+                              const newDesc = e.target.value;
+                              setMatchedItems(prev => prev.map((it, i) => i === idx ? { ...it, description: newDesc } : it));
+                            }}
+                            placeholder="Pin Description"
+                          />
                           
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-slate-500 font-mono">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              className="text-[10px] text-slate-400 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 w-1/2 focus:outline-none focus:border-violet-500/50"
+                              value={item.altText || ''}
+                              onChange={(e) => {
+                                const newAlt = e.target.value;
+                                setMatchedItems(prev => prev.map((it, i) => i === idx ? { ...it, altText: newAlt } : it));
+                              }}
+                              placeholder="Alt Text"
+                            />
+                            <input
+                              type="text"
+                              className="text-[10px] text-slate-400 bg-slate-950 border border-slate-800 rounded px-2 py-0.5 w-1/2 focus:outline-none focus:border-violet-500/50"
+                              value={item.destinationUrl || ''}
+                              onChange={(e) => {
+                                const newUrl = e.target.value;
+                                setMatchedItems(prev => prev.map((it, i) => i === idx ? { ...it, destinationUrl: newUrl } : it));
+                              }}
+                              placeholder="Destination Link"
+                            />
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 font-mono">
                             <span className="truncate max-w-[200px]" title={item.filename}>
                               File: {item.filename.split(/[\\/]/).pop()}
                             </span>
-                            {item.destinationUrl && (
-                              <span className="truncate max-w-[200px] text-blue-450 hover:underline" title={item.destinationUrl}>
-                                Link: {item.destinationUrl}
-                              </span>
-                            )}
                             {item.scheduledDate && item.scheduledTime && (
                               <span className="text-purple-400 font-bold truncate max-w-[250px]">
                                 📅 Schedule: {item.scheduledDate} at {item.scheduledTime}
