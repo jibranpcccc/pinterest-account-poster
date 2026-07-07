@@ -101,6 +101,8 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [bulkApplyDesc, setBulkApplyDesc] = useState('');
   const [bulkApplyUrl, setBulkApplyUrl] = useState('');
   const [showBulkApplyPanel, setShowBulkApplyPanel] = useState(false);
+  const [spreadsheetSourceMode, setSpreadsheetSourceMode] = useState<'file' | 'paste'>('file');
+  const [pastedSheetText, setPastedSheetText] = useState('');
 
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkScheduleDays, setBulkScheduleDays] = useState('1');
@@ -638,6 +640,52 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const parsePastedSpreadsheetText = (text: string) => {
+    if (!text.trim()) {
+      onShowToast('Pasted spreadsheet text is empty.', 'warn');
+      return;
+    }
+    try {
+      let rows: string[][] = [];
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) return;
+
+      // Determine delimiter (tab or comma)
+      const firstLine = lines[0];
+      const delimiter = firstLine.includes('\t') ? '\t' : (firstLine.includes(',') ? ',' : '\t');
+
+      if (delimiter === '\t') {
+        rows = lines.map(line => line.split('\t').map(col => col.trim()));
+      } else {
+        // Fallback to parseCSV
+        rows = parseCSV(text);
+      }
+
+      if (rows.length === 0) throw new Error('No rows found in pasted text.');
+
+      const headers = rows[0].map(h => h.trim());
+      const dataRows = rows.slice(1);
+
+      setBulkHeaders(headers);
+      setBulkRows(dataRows);
+      setBulkSpreadsheetPath('Pasted Sheet Data');
+
+      const newMapping = { title: '', description: '', url: '', altText: '', filename: '' };
+      headers.forEach((h) => {
+        const name = h.toLowerCase();
+        if (name.includes('title') || name === 'name') newMapping.title = h;
+        else if (name.includes('description') || name.includes('desc')) newMapping.description = h;
+        else if (name.includes('url') || name.includes('link') || name.includes('destination')) newMapping.url = h;
+        else if (name.includes('alt') || name.includes('alt_text')) newMapping.altText = h;
+        else if (name.includes('filename') || name.includes('image') || name.includes('file')) newMapping.filename = h;
+      });
+      setColumnMapping(newMapping);
+      onShowToast(`Pasted sheet loaded. Found ${dataRows.length} rows.`, 'success');
+    } catch (e: any) {
+      onShowToast(`Failed to parse pasted text: ${e.message}`, 'error');
+    }
   };
 
   const handleImagesDrag = (e: React.DragEvent) => {
@@ -2390,46 +2438,89 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                   <div className="flex flex-col gap-4">
                     
                     {/* Spreadsheet zone */}
-                    <div>
-                      <label className="text-[10px] uppercase font-extrabold text-slate-455 tracking-wider mb-2 block">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] uppercase font-extrabold text-slate-455 tracking-wider block">
                         Spreadsheet (Excel CSV / JSON)
                       </label>
-                      <div
-                        onDragEnter={handleSheetDrag}
-                        onDragOver={handleSheetDrag}
-                        onDragLeave={handleSheetDrag}
-                        onDrop={handleSheetDrop}
-                        onClick={() => bulkSheetInputRef.current?.click()}
-                        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
-                          bulkSpreadsheetPath 
-                            ? 'border-emerald-800/60 bg-emerald-950/5' 
-                            : 'border-slate-800 bg-slate-950/20 hover:border-slate-700 hover:bg-slate-905/30'
-                        } ${sheetDragActive ? 'border-red-500 bg-red-950/5' : ''}`}
-                      >
-                        <input
-                          type="file"
-                          ref={bulkSheetInputRef}
-                          onChange={handleBulkSheetSelect}
-                          className="hidden"
-                          accept=".csv,.txt,.json"
-                        />
-                        {bulkSpreadsheetPath ? (
-                          <div className="text-left text-xs text-slate-200">
-                            <p className="font-bold truncate flex items-center gap-1.5">
-                              <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                              {bulkSpreadsheetPath.split(/[\\/]/).pop()}
-                            </p>
-                            <p className="text-[9px] text-slate-500 font-mono mt-0.5 truncate">{bulkSpreadsheetPath}</p>
-                            <p className="text-[10px] text-slate-450 mt-1 font-bold">Rows loaded: {bulkRows.length}</p>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center py-2 text-slate-500">
-                            <UploadCloud className="w-7 h-7 mb-2 text-slate-700" />
-                            <p className="text-xs font-bold text-slate-400">Drag spreadsheet here</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">or click to browse (.csv, .json)</p>
-                          </div>
-                        )}
+                      
+                      {/* Source Mode Toggle */}
+                      <div className="flex bg-slate-950/60 p-0.5 rounded-lg border border-slate-850">
+                        <button
+                          type="button"
+                          onClick={() => setSpreadsheetSourceMode('file')}
+                          className={`flex-1 text-center py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${
+                            spreadsheetSourceMode === 'file' ? 'bg-slate-900 text-slate-100' : 'text-slate-500 hover:text-slate-350'
+                          }`}
+                        >
+                          File Upload
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSpreadsheetSourceMode('paste')}
+                          className={`flex-1 text-center py-1 text-[10px] font-bold uppercase rounded-md transition-colors ${
+                            spreadsheetSourceMode === 'paste' ? 'bg-slate-900 text-slate-100' : 'text-slate-500 hover:text-slate-350'
+                          }`}
+                        >
+                          Paste Text Table
+                        </button>
                       </div>
+
+                      {spreadsheetSourceMode === 'file' ? (
+                        <div
+                          onDragEnter={handleSheetDrag}
+                          onDragOver={handleSheetDrag}
+                          onDragLeave={handleSheetDrag}
+                          onDrop={handleSheetDrop}
+                          onClick={() => bulkSheetInputRef.current?.click()}
+                          className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+                            bulkSpreadsheetPath && bulkSpreadsheetPath !== 'Pasted Sheet Data'
+                              ? 'border-emerald-800/60 bg-emerald-950/5' 
+                              : 'border-slate-800 bg-slate-950/20 hover:border-slate-700 hover:bg-slate-905/30'
+                          } ${sheetDragActive ? 'border-red-500 bg-red-950/5' : ''}`}
+                        >
+                          <input
+                            type="file"
+                            ref={bulkSheetInputRef}
+                            onChange={handleBulkSheetSelect}
+                            className="hidden"
+                            accept=".csv,.txt,.json"
+                          />
+                          {bulkSpreadsheetPath && bulkSpreadsheetPath !== 'Pasted Sheet Data' ? (
+                            <div className="text-left text-xs text-slate-200">
+                              <p className="font-bold truncate flex items-center gap-1.5">
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                {bulkSpreadsheetPath.split(/[\\/]/).pop()}
+                              </p>
+                              <p className="text-[9px] text-slate-500 font-mono mt-0.5 truncate">{bulkSpreadsheetPath}</p>
+                              <p className="text-[10px] text-slate-450 mt-1 font-bold">Rows loaded: {bulkRows.length}</p>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center py-2 text-slate-500">
+                              <UploadCloud className="w-7 h-7 mb-2 text-slate-700" />
+                              <p className="text-xs font-bold text-slate-400">Drag spreadsheet here</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">or click to browse (.csv, .json)</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-700 focus:outline-none focus:border-violet-500/50 font-mono leading-relaxed resize-y"
+                            rows={4}
+                            placeholder="Paste Excel columns here (Tab-separated values)..."
+                            value={pastedSheetText}
+                            onChange={(e) => setPastedSheetText(e.target.value)}
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => parsePastedSpreadsheetText(pastedSheetText)}
+                          >
+                            Parse Pasted Table ({bulkRows.length} Rows Loaded)
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Bulk images zone */}

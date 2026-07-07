@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-07-07
+### Added
+- **Pasted Text Table Importer**: Added a secondary input toggle in the spreadsheet uploader component, allowing users to copy tables directly from Excel/Google Sheets and paste them in tab-separated/comma-separated format. The app automatically parses rows and columns, mapping them matching titles, descriptions, and boards.
+
 ## [1.0.5] - 2026-07-07
 ### Redesigned
 - **Bulk Uploader Step-by-Step UI Layout**: Restructured the config layout in the bulk importer panel to follow flat sibling-step cards (Step 1: Upload, Step 2: Destination Link, Step 3: Target Boards, Step 4: Image Generation Prompts, Step 5: Compile & Add Batch, Step 6: Mapping Preview Grid). Removed nested card components to clean up structural visuals.
