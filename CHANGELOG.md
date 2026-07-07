@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-07-07
+### Added
+- **Board Name/URL Column Mapping**: Added a column mapping selector for Board Name/URL to the spreadsheet importer. You can now map a spreadsheet column containing custom board names or custom board URLs directly. The parser automatically assigns these custom target boards per pin in the compiled grid, allowing pins in a single batch to be enqueued to completely different Pinterest boards automatically.
+
 ## [1.0.6] - 2026-07-07
 ### Added
 - **Pasted Text Table Importer**: Added a secondary input toggle in the spreadsheet uploader component, allowing users to copy tables directly from Excel/Google Sheets and paste them in tab-separated/comma-separated format. The app automatically parses rows and columns, mapping them matching titles, descriptions, and boards.

@@ -72,7 +72,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [bulkRows, setBulkRows] = useState<string[][]>([]);
   const [bulkImages, setBulkImages] = useState<{ name: string; path: string; size: number }[]>([]);
   const [matchingMethod, setMatchingMethod] = useState<'sequential' | 'filename'>('sequential');
-  const [columnMapping, setColumnMapping] = useState({ title: '', description: '', url: '', altText: '', filename: '' });
+  const [columnMapping, setColumnMapping] = useState({ title: '', description: '', url: '', altText: '', filename: '', boardName: '' });
   const [isParsing, setIsParsing] = useState(false);
   const [matchedItems, setMatchedItems] = useState<{
     imagePath: string;
@@ -624,7 +624,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
         setBulkRows(rows);
         setBulkSpreadsheetPath(path);
 
-        const newMapping = { title: '', description: '', url: '', altText: '', filename: '' };
+        const newMapping = { title: '', description: '', url: '', altText: '', filename: '', boardName: '' };
         headers.forEach((h) => {
           const name = h.toLowerCase();
           if (name.includes('title') || name === 'name') newMapping.title = h;
@@ -632,6 +632,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           else if (name.includes('url') || name.includes('link') || name.includes('destination')) newMapping.url = h;
           else if (name.includes('alt') || name.includes('alt_text')) newMapping.altText = h;
           else if (name.includes('filename') || name.includes('image') || name.includes('file')) newMapping.filename = h;
+          else if (name.includes('board') || name.includes('board_name') || name.includes('boardname') || name.includes('boardurl')) newMapping.boardName = h;
         });
         setColumnMapping(newMapping);
         onShowToast(`Spreadsheet loaded. Found ${rows.length} items.`, 'success');
@@ -672,7 +673,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       setBulkRows(dataRows);
       setBulkSpreadsheetPath('Pasted Sheet Data');
 
-      const newMapping = { title: '', description: '', url: '', altText: '', filename: '' };
+      const newMapping = { title: '', description: '', url: '', altText: '', filename: '', boardName: '' };
       headers.forEach((h) => {
         const name = h.toLowerCase();
         if (name.includes('title') || name === 'name') newMapping.title = h;
@@ -680,6 +681,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
         else if (name.includes('url') || name.includes('link') || name.includes('destination')) newMapping.url = h;
         else if (name.includes('alt') || name.includes('alt_text')) newMapping.altText = h;
         else if (name.includes('filename') || name.includes('image') || name.includes('file')) newMapping.filename = h;
+        else if (name.includes('board') || name.includes('board_name') || name.includes('boardname') || name.includes('boardurl')) newMapping.boardName = h;
       });
       setColumnMapping(newMapping);
       onShowToast(`Pasted sheet loaded. Found ${dataRows.length} rows.`, 'success');
@@ -868,6 +870,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     const urlColIdx = bulkHeaders.indexOf(columnMapping.url);
     const altColIdx = bulkHeaders.indexOf(columnMapping.altText);
     const fileColIdx = bulkHeaders.indexOf(columnMapping.filename);
+    const boardColIdx = bulkHeaders.indexOf(columnMapping.boardName);
 
     const items: typeof matchedItems = [];
 
@@ -877,6 +880,11 @@ export const CreatePin: React.FC<CreatePinProps> = ({
         const descVal = descColIdx !== -1 ? row[descColIdx] : '';
         const urlVal = urlColIdx !== -1 ? row[urlColIdx] : '';
         const altVal = altColIdx !== -1 ? row[altColIdx] : '';
+        const boardVal = boardColIdx !== -1 ? row[boardColIdx] : '';
+        
+        const isUrl = boardVal.startsWith('http') || boardVal.includes('pinterest.com');
+        const batchBoardNameVal = isUrl ? '' : boardVal;
+        const batchBoardUrlVal = isUrl ? boardVal : '';
         
         const img = bulkImages[idx];
         const status = !titleVal ? 'missing_title' : (!img ? 'missing_image' : 'ready');
@@ -892,7 +900,9 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           status,
           rowIdx: idx,
           scheduledDate: sched.date,
-          scheduledTime: sched.time
+          scheduledTime: sched.time,
+          batchBoardName: batchBoardNameVal || undefined,
+          batchBoardUrl: batchBoardUrlVal || undefined
         });
       });
     } else {
@@ -902,6 +912,11 @@ export const CreatePin: React.FC<CreatePinProps> = ({
         const urlVal = urlColIdx !== -1 ? row[urlColIdx] : '';
         const altVal = altColIdx !== -1 ? row[altColIdx] : '';
         const fileVal = fileColIdx !== -1 ? row[fileColIdx].toLowerCase().trim() : '';
+        const boardVal = boardColIdx !== -1 ? row[boardColIdx] : '';
+
+        const isUrl = boardVal.startsWith('http') || boardVal.includes('pinterest.com');
+        const batchBoardNameVal = isUrl ? '' : boardVal;
+        const batchBoardUrlVal = isUrl ? boardVal : '';
 
         let matchedImg = bulkImages.find(img => img.name.toLowerCase() === fileVal);
         if (!matchedImg && fileVal) {
@@ -921,7 +936,9 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           status,
           rowIdx: idx,
           scheduledDate: sched.date,
-          scheduledTime: sched.time
+          scheduledTime: sched.time,
+          batchBoardName: batchBoardNameVal || undefined,
+          batchBoardUrl: batchBoardUrlVal || undefined
         });
       });
     }
@@ -2662,6 +2679,19 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                             onChange={(e) => setColumnMapping(prev => ({ ...prev, altText: e.target.value }))}
                           >
                             <option value="">-- Ignore Column --</option>
+                            {bulkHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Board Name/URL */}
+                        <div className="grid grid-cols-2 items-center gap-2">
+                          <span className="text-xs text-slate-355 font-bold text-violet-400">Board Name/URL:</span>
+                          <select
+                            className="bg-slate-955 border border-slate-800 rounded px-2 py-1 text-xs text-slate-300"
+                            value={columnMapping.boardName}
+                            onChange={(e) => setColumnMapping(prev => ({ ...prev, boardName: e.target.value }))}
+                          >
+                            <option value="">-- Use Selected Boards --</option>
                             {bulkHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                         </div>
