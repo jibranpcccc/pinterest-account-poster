@@ -249,7 +249,7 @@ export class DbManager {
       { key: 'screenshotOnError', value: JSON.stringify(true) },
       { key: 'continueAfterFailure', value: JSON.stringify(false) },
       { key: 'headlessQueue', value: JSON.stringify(false) }, // Default to VISIBLE browser (required for file upload dialogs)
-      { key: 'aiEnabled', value: JSON.stringify(false) },
+      { key: 'aiEnabled', value: JSON.stringify(true) },
       { key: 'aiProvider', value: JSON.stringify('opencode') },
       { key: 'aiBaseUrl', value: JSON.stringify('https://api.opencode.dev/v1') },
       { key: 'aiApiKey', value: JSON.stringify('') },

@@ -8,7 +8,7 @@ import {
   Image as ImageIcon, Sparkles, AlertCircle, Plus, 
   Save, Send, Info, Tag, RefreshCw, X, FileSpreadsheet,
   Layers, Settings2, FileText, CheckCircle2, ListChecks, UploadCloud, Check,
-  Trash2
+  Trash2, Copy, Upload
 } from 'lucide-react';
 import { api } from '../services/api';
 import { SeoAudit } from '../components/SeoAudit';
@@ -91,21 +91,29 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [sheetDragActive, setSheetDragActive] = useState(false);
   const [imagesDragActive, setImagesDragActive] = useState(false);
 
-  const [bulkAiMode, setBulkAiMode] = useState(false);
+  const [bulkAiMode, setBulkAiMode] = useState(true); // Always on — only image prompt mode is used
+  const [queueMode, setQueueMode] = useState(false);
   const [bulkDefaultUrl, setBulkDefaultUrl] = useState('');
+  const [bulkPromptsText, setBulkPromptsText] = useState('');
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; message: string } | null>(null);
   const [isGeneratingBulkAI, setIsGeneratingBulkAI] = useState(false);
+  const [bulkApplyTitle, setBulkApplyTitle] = useState('');
+  const [bulkApplyDesc, setBulkApplyDesc] = useState('');
+  const [bulkApplyUrl, setBulkApplyUrl] = useState('');
+  const [showBulkApplyPanel, setShowBulkApplyPanel] = useState(false);
 
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkScheduleDays, setBulkScheduleDays] = useState('1');
   const [bulkScheduleStartTime, setBulkScheduleStartTime] = useState('09:00');
   const [bulkScheduleEndTime, setBulkScheduleEndTime] = useState('18:00');
   const [boardSearchQuery, setBoardSearchQuery] = useState<Record<string, string>>({});
+  const [bulkSelectedBoards, setBulkSelectedBoards] = useState<Record<string, { boardName: string; boardUrl: string }[]>>({});
+  const [manualBoardUrlsText, setManualBoardUrlsText] = useState('');
 
   // Multi-Batch System: each batch = images + board + destinationUrl
   type BulkBatch = {
     id: string;
-    images: { name: string; path: string; size: number }[];
+    images: { name: string; path: string; size: number; imagePrompt?: string }[];
     boardName: string;
     boardUrl: string;
     destinationUrl: string;
@@ -136,6 +144,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bulkSheetInputRef = useRef<HTMLInputElement>(null);
   const bulkImageInputRef = useRef<HTMLInputElement>(null);
+  const bulkPromptsFileRef = useRef<HTMLInputElement>(null);
 
   // Pure JavaScript CSV Parser
   const parseCSV = (text: string): string[][] => {
@@ -737,14 +746,15 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     if (bulkAiMode) {
       // Multi-batch mode: build items from all batches
       if (bulkBatches.length > 0) {
-        const allImages: { name: string; path: string; size: number; boardName: string; boardUrl: string; destinationUrl: string }[] = [];
+        const allImages: { name: string; path: string; size: number; boardName: string; boardUrl: string; destinationUrl: string; imagePrompt?: string }[] = [];
         for (const batch of bulkBatches) {
           for (const img of batch.images) {
             allImages.push({ 
               ...img, 
               boardName: batch.boardName, 
               boardUrl: batch.boardUrl, 
-              destinationUrl: batch.destinationUrl 
+              destinationUrl: batch.destinationUrl,
+              imagePrompt: (img as any).imagePrompt
             });
           }
         }
@@ -767,7 +777,8 @@ export const CreatePin: React.FC<CreatePinProps> = ({
             scheduledDate: sched.date,
             scheduledTime: sched.time,
             batchBoardName: img.boardName,
-            batchBoardUrl: img.boardUrl
+            batchBoardUrl: img.boardUrl,
+            imagePrompt: img.imagePrompt
           };
         });
         setMatchedItems(items);
@@ -937,24 +948,114 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       onShowToast('Add images to this batch first.', 'warn');
       return;
     }
-    if (!stagingBoardUrl) {
-      onShowToast('Select a target board for this batch.', 'warn');
+    
+    // Gather all target boards for this batch
+    const targetBoardsList: { boardName: string; boardUrl: string }[] = [];
+    for (const accId of selectedAccountIds) {
+      const selected = bulkSelectedBoards[accId] || [];
+      for (const b of selected) {
+        targetBoardsList.push({ boardName: b.boardName, boardUrl: b.boardUrl });
+      }
+    }
+    const manualUrls = manualBoardUrlsText.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const url of manualUrls) {
+      const name = parseBoardUrlToName(url);
+      targetBoardsList.push({ boardName: name, boardUrl: url });
+    }
+    
+    // Fallback to accounts list board configuration
+    if (targetBoardsList.length === 0) {
+      for (const accId of selectedAccountIds) {
+        const mapping = accountBoards[accId];
+        if (mapping && mapping.boardUrl) {
+          targetBoardsList.push({ boardName: mapping.boardName, boardUrl: mapping.boardUrl });
+        }
+      }
+    }
+    
+    // Fallback to staging dropdown selection if checklist is empty
+    if (targetBoardsList.length === 0 && stagingBoardUrl) {
+      targetBoardsList.push({ boardName: stagingBoardName, boardUrl: stagingBoardUrl });
+    }
+    
+    if (targetBoardsList.length === 0) {
+      onShowToast('Select at least one board (checklist, dropdown, or manual URL) first.', 'warn');
       return;
     }
-    const newBatch: BulkBatch = {
-      id: Date.now().toString(),
-      images: [...stagingImages],
-      boardName: stagingBoardName,
-      boardUrl: stagingBoardUrl,
-      destinationUrl: stagingDestinationUrl.trim()
-    };
-    setBulkBatches(prev => [...prev, newBatch]);
+
+    const promptLines = bulkPromptsText.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    // Create a batch for each board target
+    const newBatches: BulkBatch[] = targetBoardsList.map((board, bIdx) => {
+      const imagesWithPrompts = stagingImages.map((img, i) => ({
+        name: img.name,
+        path: img.path,
+        size: img.size,
+        imagePrompt: promptLines[i] || ''
+      }));
+      
+      return {
+        id: `${Date.now()}-${bIdx}`,
+        images: imagesWithPrompts,
+        boardName: board.boardName,
+        boardUrl: board.boardUrl,
+        destinationUrl: stagingDestinationUrl.trim() || bulkDefaultUrl.trim()
+      };
+    });
+    
+    setBulkBatches(prev => [...prev, ...newBatches]);
+    
+    // Clear staging inputs so they can easily drop next batch
     setStagingImages([]);
+    setBulkPromptsText('');
     setStagingBoardUrl('');
     setStagingBoardName('');
     setStagingDestinationUrl('');
+    setBulkDefaultUrl('');
+    setBulkSelectedBoards({});
+    setManualBoardUrlsText('');
     if (stagingImageInputRef.current) stagingImageInputRef.current.value = '';
-    onShowToast(`Batch added: ${newBatch.images.length} images → "${newBatch.boardName}"`, 'success');
+    
+    onShowToast(`Successfully added ${newBatches.length * stagingImages.length} items to the preview grid!`, 'success');
+  };
+
+  const handleToggleBoardSelection = (accId: string, board: { boardName: string; boardUrl: string }) => {
+    setBulkSelectedBoards(prev => {
+      const selected = prev[accId] || [];
+      const exists = selected.some(b => b.boardUrl === board.boardUrl);
+      const updated = exists
+        ? selected.filter(b => b.boardUrl !== board.boardUrl)
+        : [...selected, board];
+      return { ...prev, [accId]: updated };
+    });
+  };
+
+  const handleApplyBulkFields = () => {
+    if (!bulkApplyTitle && !bulkApplyDesc && !bulkApplyUrl) {
+      onShowToast('Please enter at least one field to apply.', 'warn');
+      return;
+    }
+    setMatchedItems(prev => prev.map(item => ({
+      ...item,
+      title: bulkApplyTitle.trim() ? bulkApplyTitle.trim() : item.title,
+      description: bulkApplyDesc.trim() ? bulkApplyDesc.trim() : item.description,
+      destinationUrl: bulkApplyUrl.trim() ? bulkApplyUrl.trim() : item.destinationUrl,
+      status: (bulkApplyTitle.trim() || item.title) ? 'ready' as const : 'missing_title' as const
+    })));
+    onShowToast('Successfully applied fields in bulk to all preview pins!', 'success');
+  };
+
+  const handleApplyCardToAll = (idx: number) => {
+    const source = matchedItems[idx];
+    if (!source) return;
+    setMatchedItems(prev => prev.map(item => ({
+      ...item,
+      title: source.title,
+      description: source.description,
+      destinationUrl: source.destinationUrl,
+      status: source.title ? 'ready' : 'missing_title'
+    })));
+    onShowToast(`Applied metadata from Pin #${idx + 1} to all other pins!`, 'success');
   };
 
   const removeBatch = (batchId: string) => {
@@ -1071,52 +1172,73 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     }
     
     setIsGeneratingBulkAI(true);
-    setBulkProgress({ current: 0, total: readyItems.length, message: 'Initializing Kimi K2.6 Vision analysis...' });
+    setBulkProgress({ current: 0, total: readyItems.length, message: 'Initializing parallel Kimi K2.6 generation...' });
     
     try {
       let updatedItems = [...matchedItems];
-      let genCount = 0;
+      let completedCount = 0;
 
-      for (let i = 0; i < updatedItems.length; i++) {
-        const item = updatedItems[i];
-        if (item.status !== 'ready') continue;
-
+      // Helper to process a single item with retries
+      const processItem = async (itemIdx: number) => {
+        const item = updatedItems[itemIdx];
         const cleanedName = item.filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").replace(/\b\d{4,}\b/g, "").replace(/\s*\b\d+\b\s*$/, "").replace(/\s+/g, " ").trim();
-        
-        setBulkProgress({
-          current: genCount + 1,
-          total: readyItems.length,
-          message: `Analyzing image: "${cleanedName}" using Kimi K2.6...`
-        });
-
         const firstAccId = selectedAccountIds[0];
         const itemBoardName = item.batchBoardName || accountBoards[firstAccId]?.boardName || 'Pinterest Pins';
+
+        const fetchWithRetry = async (attempt = 1): Promise<any> => {
+          try {
+            const seo = await api.callAI('analyzeImage', {
+              imagePath: item.imagePath,
+              boardName: itemBoardName,
+              topic: itemBoardName,
+              destinationUrl: item.destinationUrl || bulkDefaultUrl,
+              imagePrompt: item.imagePrompt
+            });
+            return seo;
+          } catch (err) {
+            if (attempt < 3) {
+              console.warn(`[AI Retry] Staged AI attempt ${attempt} failed for "${item.filename}". Retrying...`, err);
+              await new Promise(r => setTimeout(r, 1500));
+              return fetchWithRetry(attempt + 1);
+            }
+            throw err;
+          }
+        };
 
         let aiTitle = '';
         let aiDesc = '';
         let aiAlt = '';
 
         try {
-          const seo = await api.callAI('analyzeImage', {
-            imagePath: item.imagePath,
-            boardName: itemBoardName,
-            topic: itemBoardName,
-            destinationUrl: item.destinationUrl || bulkDefaultUrl
-          });
-          
+          const seo = await fetchWithRetry(1);
           aiTitle = seo?.title || `Beautiful ${cleanedName}`;
           aiDesc = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
           aiAlt = seo?.altText || `Visual representation of ${cleanedName}`;
         } catch (aiErr) {
-          console.error(`AI Vision failed for ${item.filename}, trying text fallback:`, aiErr);
+          console.error(`AI Generation failed for ${item.filename} after retries, trying text fallback:`, aiErr);
+          
+          // Retry the text fallback too!
+          const fetchTextWithRetry = async (attempt = 1): Promise<any> => {
+            try {
+              const seo = await api.callAI('generateSEOComplete', {
+                topic: itemBoardName,
+                keyword: cleanedName,
+                tone: 'Inspirational',
+                audience: 'General Pinterest users',
+                imageNotes: cleanedName
+              });
+              return seo;
+            } catch (textErr) {
+              if (attempt < 2) {
+                await new Promise(r => setTimeout(r, 1000));
+                return fetchTextWithRetry(attempt + 1);
+              }
+              throw textErr;
+            }
+          };
+
           try {
-            const seo = await api.callAI('generateSEOComplete', {
-              topic: itemBoardName,
-              keyword: cleanedName,
-              tone: 'Inspirational',
-              audience: 'General Pinterest users',
-              imageNotes: cleanedName
-            });
+            const seo = await fetchTextWithRetry(1);
             aiTitle = seo?.title || `Beautiful ${cleanedName}`;
             aiDesc = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
             aiAlt = seo?.altText || `Visual representation of ${cleanedName}`;
@@ -1127,17 +1249,49 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           }
         }
 
-        updatedItems[i] = {
+        updatedItems[itemIdx] = {
           ...item,
           title: aiTitle,
           description: aiDesc,
           altText: aiAlt
         };
-        
+
+        completedCount++;
+        setBulkProgress(prev => prev ? {
+          ...prev,
+          current: completedCount,
+          message: `Finished: "${cleanedName}" (${completedCount} of ${readyItems.length})`
+        } : null);
+
+        // Update matched items lists incrementally to keep UI responsive
         setMatchedItems([...updatedItems]);
-        genCount++;
-      }
-      onShowToast(`Successfully generated AI SEO for ${genCount} items!`, 'success');
+      };
+
+      // Run up to 10 in parallel using a simple pool
+      const indexList = updatedItems.map((item, idx) => item.status === 'ready' ? idx : -1).filter(idx => idx !== -1);
+      
+      const pool = async () => {
+        const workers = [];
+        const activeIndexes = [...indexList];
+        
+        const worker = async () => {
+          while (activeIndexes.length > 0) {
+            const idx = activeIndexes.shift();
+            if (idx !== undefined) {
+              await processItem(idx);
+            }
+          }
+        };
+
+        const concurrency = Math.min(10, activeIndexes.length);
+        for (let i = 0; i < concurrency; i++) {
+          workers.push(worker());
+        }
+        await Promise.all(workers);
+      };
+
+      await pool();
+      onShowToast(`Successfully generated AI SEO for all ${completedCount} items!`, 'success');
     } catch (e: any) {
       onShowToast(`AI generation failed: ${e.message}`, 'error');
     } finally {
@@ -1202,7 +1356,8 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               imagePath: item.imagePath,
               boardName: itemBoardName,
               topic: itemBoardName,
-              destinationUrl: item.destinationUrl || bulkDefaultUrl
+              destinationUrl: item.destinationUrl || bulkDefaultUrl,
+              imagePrompt: item.imagePrompt
             });
             titleVal = seo?.title || `Beautiful ${cleanedName}`;
             descVal = seo?.description || `Explore more about ${cleanedName}! Save this pin for later.`;
@@ -1949,23 +2104,24 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               </div>
             </Card>            {bulkAiMode ? (
               <>
-                {/* Multi-Batch Builder */}
-                <Card title="1. Create Image Batches" subtitle="Select images → pick board → add batch. Repeat for different boards.">
+                {/* Step 1: Upload Images in Bulk */}
+                <Card title="1. Upload Images in Bulk" subtitle="Drag and drop or select multiple media images">
                   <div className="flex flex-col gap-4">
-                    {/* Staging: Select images for current batch */}
                     <div>
-                      <label className="text-[9px] uppercase font-bold text-slate-500 mb-1.5 block">Select Images for This Batch</label>
+                      <label className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider mb-2 block">
+                        Select Media Images
+                      </label>
                       <div
                         onDragEnter={handleStagingImagesDrag}
                         onDragOver={handleStagingImagesDrag}
                         onDragLeave={handleStagingImagesDrag}
                         onDrop={handleStagingImagesDrop}
                         onClick={() => stagingImageInputRef.current?.click()}
-                        className={`border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-all duration-200 ${
+                        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
                           stagingImages.length > 0 
                             ? 'border-emerald-800/60 bg-emerald-950/5' 
-                            : 'border-slate-800 bg-slate-950/20 hover:border-slate-700'
-                        } ${imagesDragActive ? 'border-violet-500 bg-violet-950/10' : ''}`}
+                            : 'border-slate-800 bg-slate-950/20 hover:border-slate-700 hover:bg-slate-955/30'
+                        } ${imagesDragActive ? 'border-red-500 bg-red-950/5' : ''}`}
                       >
                         <input
                           type="file"
@@ -1979,178 +2135,251 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                           <div className="text-left text-xs text-slate-200">
                             <p className="font-bold flex items-center gap-1.5">
                               <ImageIcon className="w-4 h-4 text-emerald-500" />
-                              {stagingImages.length} image(s) selected
+                              {stagingImages.length} Image(s) loaded
                             </p>
-                            <div className="grid grid-cols-5 gap-1.5 mt-2 max-h-[120px] overflow-y-auto">
-                              {stagingImages.slice(0, 10).map((img, i) => (
-                                <div key={i} className="aspect-square bg-slate-950 rounded-lg border border-slate-700/50 overflow-hidden" title={img.name}>
-                                  <img src={`media:///${img.path.replace(/\\/g, '/')}`} alt={img.name} className="w-full h-full object-cover" />
+                            <div 
+                              onClick={(e) => e.stopPropagation()}
+                              className="grid grid-cols-5 gap-1 mt-2.5 max-h-[160px] overflow-y-auto pr-1"
+                            >
+                              {stagingImages.map((img, i) => (
+                                <div key={i} className="aspect-square bg-slate-950 rounded border border-slate-850 overflow-hidden" title={img.name}>
+                                  <img src={`media:///${img.path.replace(/\\/g, '/')}`} alt="" className="w-full h-full object-cover" />
                                 </div>
                               ))}
-                              {stagingImages.length > 10 && (
-                                <div className="aspect-square bg-slate-900/60 rounded-lg border border-slate-700/50 flex items-center justify-center text-[10px] text-slate-400 font-bold">
-                                  +{stagingImages.length - 10}
-                                </div>
-                              )}
                             </div>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setStagingImages([]); }}
-                              className="text-[10px] text-rose-400 font-bold mt-2 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setStagingImages([]);
+                              }}
+                              className="text-[10px] text-rose-455 font-bold mt-2.5 block hover:underline"
                             >
-                              Clear
+                              Clear selected images
                             </button>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center py-2 text-slate-500">
-                            <UploadCloud className="w-6 h-6 mb-1 text-slate-700" />
-                            <p className="text-xs font-bold text-slate-400">Drop images here</p>
-                            <p className="text-[10px] text-slate-600">or click to browse</p>
+                            <UploadCloud className="w-7 h-7 mb-2 text-slate-700" />
+                            <p className="text-xs font-bold text-slate-400">Select Multiple Images</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Drag-drop files in bulk</p>
                           </div>
                         )}
                       </div>
                     </div>
-
-                    {/* Staging: Pick board for this batch */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Assign Board for This Batch</label>
-                      {(() => {
-                        const firstAccId = selectedAccountIds[0];
-                        const boardsList = firstAccId ? (boardsData[firstAccId] || []) : [];
-                        return (
-                          <div className="flex flex-col gap-2 text-xs">
-                            {boardsList.length > 0 && (
-                              <select
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-violet-500/50 appearance-none"
-                                style={{ backgroundColor: '#0a0a0f', color: '#e2e8f0' }}
-                                value={boardsList.some(b => b.url === stagingBoardUrl) ? stagingBoardUrl : ""}
-                                onChange={(e) => {
-                                  const url = e.target.value;
-                                  if (url) {
-                                    const board = boardsList.find(b => b.url === url);
-                                    setStagingBoardUrl(url);
-                                    setStagingBoardName(board?.name || '');
-                                  } else {
-                                    setStagingBoardUrl('');
-                                    setStagingBoardName('');
-                                  }
-                                }}
-                              >
-                                <option value="">— Choose from Dropdown —</option>
-                                {boardsList.map((b) => (
-                                  <option key={b.url} value={b.url}>{b.name}</option>
-                                ))}
-                              </select>
-                            )}
-                            <input
-                              type="text"
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 placeholder-slate-700 focus:outline-none focus:border-violet-500/50"
-                              placeholder="Or Paste Custom Board URL"
-                              value={stagingBoardUrl}
-                              onChange={(e) => {
-                                const url = e.target.value;
-                                setStagingBoardUrl(url);
-                                if (url.trim().startsWith('http') || url.includes('/')) {
-                                  setStagingBoardName(parseBoardUrlToName(url));
-                                } else {
-                                  setStagingBoardName(url.trim());
-                                }
-                              }}
-                            />
-                            {stagingBoardName && (
-                              <p className="text-[10px] text-violet-400 font-semibold italic">
-                                Assigned Board Name: {stagingBoardName}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Staging: Destination URL for this batch */}
-                    <div className="flex flex-col gap-1 text-xs">
-                      <label className="text-[9px] uppercase font-bold text-slate-500 block">Destination URL for This Batch (Optional)</label>
-                      <input
-                        type="url"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-250 placeholder-slate-700 focus:outline-none focus:border-violet-500/50"
-                        placeholder="e.g. https://mywebsite.com/niche-link"
-                        value={stagingDestinationUrl}
-                        onChange={(e) => setStagingDestinationUrl(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Commit batch button */}
-                    <button
-                      onClick={commitBatch}
-                      disabled={stagingImages.length === 0 || !stagingBoardUrl}
-                      className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                        stagingImages.length > 0 && stagingBoardUrl
-                          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500 shadow-lg shadow-violet-500/20'
-                          : 'bg-slate-900 text-slate-600 cursor-not-allowed'
-                      }`}
-                    >
-                      <Plus className="w-4 h-4" /> Add Batch ({stagingImages.length} images)
-                    </button>
-
-                    {/* Committed batches list */}
-                    {bulkBatches.length > 0 && (
-                      <div className="border-t border-slate-800 pt-3">
-                        <p className="text-[9px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5" />
-                          {bulkBatches.length} Batch{bulkBatches.length > 1 ? 'es' : ''} Ready — {bulkBatches.reduce((sum, b) => sum + b.images.length, 0)} total images
-                        </p>
-                        <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
-                          {bulkBatches.map((batch, bIdx) => (
-                            <div key={batch.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 group hover:border-violet-500/30 transition-colors">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex flex-col gap-0.5 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="bg-violet-500/15 text-violet-400 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0">Batch {bIdx + 1}</span>
-                                    <span className="text-slate-300 text-xs font-semibold truncate" title={batch.boardName}>{batch.boardName}</span>
-                                  </div>
-                                  {batch.destinationUrl && (
-                                    <span className="text-[10px] text-blue-400/80 truncate pl-1 mt-0.5" title={batch.destinationUrl}>
-                                      🔗 {batch.destinationUrl}
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => removeBatch(batch.id)}
-                                  className="text-slate-600 hover:text-rose-400 transition-colors p-1 flex-shrink-0"
-                                  title="Remove batch"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {batch.images.slice(0, 5).map((img, i) => (
-                                  <div key={i} className="w-8 h-8 rounded-md overflow-hidden border border-slate-700/50 flex-shrink-0">
-                                    <img src={`media:///${img.path.replace(/\\/g, '/')}`} alt="" className="w-full h-full object-cover" />
-                                  </div>
-                                ))}
-                                {batch.images.length > 5 && (
-                                  <span className="text-[10px] text-slate-500 font-bold">+{batch.images.length - 5} more</span>
-                                )}
-                                <span className="ml-auto text-[10px] text-emerald-500/70 font-bold">{batch.images.length} 🖼</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </Card>
 
-                {/* Default Destination URL */}
-                <Card title="2. Set Destination Website Link" subtitle="Default landing URL for generated pins">
-                  <div className="flex flex-col gap-1.5 text-xs">
-                    <label className="text-[9px] uppercase font-bold text-slate-500">Destination URL</label>
-                    <input
-                      type="url"
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-700 focus:outline-none focus:border-slate-650"
-                      placeholder="e.g. https://mywebsite.com"
-                      value={bulkDefaultUrl}
-                      onChange={(e) => setBulkDefaultUrl(e.target.value)}
+                {/* Step 2: Destination Link */}
+                <Card title="2. Set Default Destination Link" subtitle="Link added to all pins in this batch">
+                  <input
+                    type="text"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-700 focus:outline-none focus:border-violet-500/50"
+                    placeholder="e.g. https://myblog.com/kitchen-designs"
+                    value={bulkDefaultUrl}
+                    onChange={e => setBulkDefaultUrl(e.target.value)}
+                  />
+                </Card>
+
+                {/* Step 3: Target Boards */}
+                <Card title="3. Select Target Boards" subtitle="Select target publishing folders (Multiple supported)">
+                  {accounts.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-xs">
+                      No accounts connected. Add account in Accounts tab.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-3">
+                        {accounts.map((acc) => {
+                          const isSelected = selectedAccountIds.includes(acc.id);
+                          const boardsList = boardsData[acc.id] || [];
+
+                          return (
+                            <div key={acc.id} className="p-2.5 bg-slate-950/40 rounded-lg border border-slate-850 flex flex-col gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  id={`bulk-chk-${acc.id}`}
+                                  className="rounded border-slate-800 bg-slate-955 text-red-500 w-3.5 h-3.5 cursor-pointer"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleAccount(acc.id)}
+                                />
+                                <div className="flex items-center gap-2">
+                                  {/* Avatar */}
+                                  <div className="w-7 h-7 rounded overflow-hidden flex items-center justify-center bg-slate-900 border border-slate-805 text-xs font-bold text-slate-200 flex-shrink-0">
+                                    {acc.avatarUrl ? (
+                                      <img src={acc.avatarUrl} alt={acc.nickname} className="w-full h-full object-cover" />
+                                    ) : (
+                                      acc.nickname.charAt(0).toUpperCase()
+                                    )}
+                                  </div>
+                                  <label htmlFor={`bulk-chk-${acc.id}`} className="flex flex-col cursor-pointer">
+                                    <span className="text-xs font-bold text-slate-200 leading-tight">{acc.nickname}</span>
+                                    {acc.username ? (
+                                      <span className="text-[9px] text-emerald-455 font-semibold leading-none">@{acc.username}</span>
+                                    ) : (
+                                      <span className="text-[9px] text-slate-350 font-mono capitalize leading-none">Status: {acc.sessionStatus}</span>
+                                    )}
+                                  </label>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <div className="flex flex-col gap-1.5 mt-1">
+                                  {boardsList.length > 0 ? (
+                                    <>
+                                      <input
+                                        type="text"
+                                        className="w-full bg-slate-950 border border-slate-855 rounded px-2 py-0.5 text-[10px] text-slate-200 placeholder-slate-650 focus:outline-none"
+                                        placeholder="🔍 Search boards..."
+                                        value={boardSearchQuery[acc.id] || ''}
+                                        onChange={(e) => setBoardSearchQuery(prev => ({ ...prev, [acc.id]: e.target.value }))}
+                                      />
+                                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto border border-slate-800 rounded-lg p-1.5 bg-slate-950/60">
+                                        {boardsList
+                                          .filter(b => b.name.toLowerCase().includes((boardSearchQuery[acc.id] || '').toLowerCase()))
+                                          .map((b) => {
+                                            const isBoardSelected = (bulkSelectedBoards[acc.id] || []).some(sb => sb.boardUrl === b.url);
+                                            return (
+                                              <label key={b.id} className="flex items-center gap-2 p-1 hover:bg-slate-900 rounded cursor-pointer text-xs text-slate-200 select-none">
+                                                <input
+                                                  type="checkbox"
+                                                  className="rounded border-slate-800 bg-slate-955 text-red-500 w-3 h-3 cursor-pointer"
+                                                  checked={isBoardSelected}
+                                                  onChange={() => handleToggleBoardSelection(acc.id, { boardName: b.name, boardUrl: b.url })}
+                                                />
+                                                <span className="truncate">{b.name}</span>
+                                              </label>
+                                            );
+                                          })
+                                        }
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <p className="text-[10px] text-slate-500 italic pl-9">No boards found. Paste manual URLs below.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Manual Board URLs Area */}
+                      <div className="mt-3 pt-3 border-t border-slate-855">
+                        <label className="text-[10px] uppercase font-extrabold text-violet-400 tracking-wider mb-2 block">
+                          ✦ Paste Board URLs Manually (One per line)
+                        </label>
+                        <textarea
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-705 focus:outline-none focus:border-violet-500/50 resize-none font-mono leading-relaxed"
+                          rows={3}
+                          placeholder={`https://www.pinterest.com/username/board-name1/\nhttps://www.pinterest.com/username/board-name2/`}
+                          value={manualBoardUrlsText}
+                          onChange={e => setManualBoardUrlsText(e.target.value)}
+                        />
+                        <p className="text-[9px] text-slate-500 mt-1 leading-normal">
+                          Manually entered board URLs will use the first selected account.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Step 4: Image Generation Prompts */}
+                <Card title="4. Image Generation Prompts" subtitle="One prompt per line (matches image order)">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] uppercase font-bold text-slate-500 font-mono">Prompts List</span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 py-0"
+                        onClick={() => bulkPromptsFileRef.current?.click()}
+                      >
+                        <Upload className="w-3 h-3 mr-1" /> Load Text File
+                      </Button>
+                      <input
+                        type="file"
+                        ref={bulkPromptsFileRef}
+                        accept=".txt,.csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const text = (ev.target?.result as string) || '';
+                            setBulkPromptsText(text.trim());
+                            onShowToast(`Loaded ${text.trim().split('\n').filter(Boolean).length} prompts.`, 'success');
+                          };
+                          reader.readAsText(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </div>
+                    <textarea
+                      className="w-full bg-slate-950/80 border border-slate-805 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-700 focus:outline-none focus:border-violet-500/50 resize-none font-mono leading-relaxed"
+                      rows={4}
+                      placeholder={`Line 1: High ponytail protective style...\nLine 2: Auburn wavy shag cut...`}
+                      value={bulkPromptsText}
+                      onChange={e => setBulkPromptsText(e.target.value)}
                     />
+                    {(() => {
+                      const pc = bulkPromptsText.split('\n').filter(l => l.trim()).length;
+                      const ti = stagingImages.length;
+                      if (!bulkPromptsText || ti === 0) return null;
+                      const ok = pc === ti;
+                      return (
+                        <p className={`text-[9px] font-semibold ${ok ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {ok ? '✓' : '⚠'} {pc} prompt{pc !== 1 ? 's' : ''} / {ti} image{ti !== 1 ? 's' : ''}
+                          {!ok && ' — missing prompts will fall back to vision'}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </Card>
+
+                {/* Step 5: Compile & Add Batch to Grid */}
+                <Card title="5. Add to Preview Grid" subtitle="Compile this batch and clear inputs for next set">
+                  <div className="flex flex-col gap-3">
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      disabled={stagingImages.length === 0}
+                      className="w-full bg-violet-900 hover:bg-violet-850 border-violet-700 text-xs py-2 font-black"
+                      onClick={commitBatch}
+                    >
+                      + Compile & Add Batch to Grid ({stagingImages.length} Image{stagingImages.length !== 1 ? 's' : ''})
+                    </Button>
+
+                    <p className="text-[10px] text-slate-500 leading-normal bg-slate-950/40 p-2 rounded-lg border border-slate-850">
+                      💡 <strong>Tip:</strong> You can compile multiple batches! Just upload new images, set a different destination/boards/prompts, and click Add Batch again to stack them all in the preview.
+                    </p>
+
+                    {bulkBatches.length > 0 && (
+                      <div className="flex flex-col gap-1.5 border-t border-slate-850 pt-2.5">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[9px] uppercase font-bold text-slate-500 font-mono">Compiled Batches List:</span>
+                          <button 
+                            onClick={() => {
+                              setBulkBatches([]);
+                              onShowToast('Cleared all batches.', 'info');
+                            }}
+                            className="text-rose-455 font-bold hover:underline text-[9px] uppercase cursor-pointer"
+                          >
+                            Clear All Batches
+                          </button>
+                        </div>
+                        {bulkBatches.map((b, idx) => (
+                          <div key={b.id} className="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg border border-slate-850 text-xs">
+                            <span className="truncate pr-2">
+                              <strong className="text-violet-400">#{idx+1}:</strong> {b.images.length} imgs → {b.boardName}
+                            </span>
+                            <button onClick={() => removeBatch(b.id)} className="text-rose-455 font-bold hover:underline text-[10px] flex-shrink-0">
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Card>
               </>
@@ -2422,92 +2651,6 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                 )}
               </div>
             </Card>
-
-            {/* Target Settings */}
-            <Card title="3. Target Boards" subtitle="Select target publishing folders">
-              {accounts.length === 0 ? (
-                <div className="text-center py-4 text-slate-500 text-xs">
-                  No accounts connected. Add account in Accounts tab.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {accounts.map((acc) => {
-                    const isSelected = selectedAccountIds.includes(acc.id);
-                    const boardsList = boardsData[acc.id] || [];
-                    const selection = accountBoards[acc.id] || { boardName: '', boardUrl: '' };
-
-                    return (
-                      <div key={acc.id} className="p-2.5 bg-slate-950/40 rounded-lg border border-slate-850 flex flex-col gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            id={`bulk-chk-${acc.id}`}
-                            className="rounded border-slate-800 bg-slate-955 text-red-500 w-3.5 h-3.5 cursor-pointer"
-                            checked={isSelected}
-                            onChange={() => handleToggleAccount(acc.id)}
-                          />
-                          <div className="flex items-center gap-2">
-                            {/* Avatar */}
-                            <div className="w-7 h-7 rounded overflow-hidden flex items-center justify-center bg-slate-900 border border-slate-805 text-xs font-bold text-slate-200 flex-shrink-0">
-                              {acc.avatarUrl ? (
-                                <img src={acc.avatarUrl} alt={acc.nickname} className="w-full h-full object-cover" />
-                              ) : (
-                                acc.nickname.charAt(0).toUpperCase()
-                              )}
-                            </div>
-                            <label htmlFor={`bulk-chk-${acc.id}`} className="flex flex-col cursor-pointer">
-                              <span className="text-xs font-bold text-slate-200 leading-tight">{acc.nickname}</span>
-                              {acc.username ? (
-                                <span className="text-[9px] text-emerald-455 font-semibold leading-none">@{acc.username}</span>
-                              ) : (
-                                <span className="text-[9px] text-slate-350 font-mono capitalize leading-none">Status: {acc.sessionStatus}</span>
-                              )}
-                            </label>
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <div>
-                            {boardsList.length > 0 ? (
-                              <>
-                                <input
-                                  type="text"
-                                  className="w-full bg-slate-950 border border-slate-805 rounded px-2 py-0.5 mb-1 text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none"
-                                  placeholder="🔍 Search boards..."
-                                  value={boardSearchQuery[acc.id] || ''}
-                                  onChange={(e) => setBoardSearchQuery(prev => ({ ...prev, [acc.id]: e.target.value }))}
-                                />
-                                <select
-                                  className="w-full border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none"
-                                  style={{ backgroundColor: '#020617', color: '#e2e8f0' }}
-                                  value={boardsList.find(b => b.url === selection.boardUrl)?.id || selection.boardUrl}
-                                  onChange={(e) => handleBoardChange(acc.id, e.target.value)}
-                                >
-                                  {boardsList
-                                    .filter(b => b.name.toLowerCase().includes((boardSearchQuery[acc.id] || '').toLowerCase()))
-                                    .map((b) => (
-                                      <option key={b.id} value={b.id} style={{ backgroundColor: '#020617', color: '#e2e8f0' }}>{b.name}</option>
-                                    ))
-                                  }
-                                </select>
-                              </>
-                            ) : (
-                              <input
-                                type="text"
-                                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 placeholder-slate-650 focus:outline-none"
-                                placeholder="Paste Board URL"
-                                value={selection.boardUrl}
-                                onChange={(e) => handleBoardChange(acc.id, e.target.value)}
-                              />
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-
           </div>
 
           {/* Right Column: Matched Preview Grid */}
@@ -2594,9 +2737,91 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                   >
                     Publish Directly Now ({matchedItems.filter(i => i.status === 'ready').length})
                   </Button>
+                  {matchedItems.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Copy className="w-3.5 h-3.5 text-violet-400" />}
+                      className="bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-850"
+                      onClick={async () => {
+                        const formattedText = matchedItems.map((item, index) => {
+                          return `--- Pin #${index + 1} ---\nTitle: ${item.title || ''}\nDescription: ${item.description || ''}\nLink: ${item.destinationUrl || ''}\nAlt Text: ${item.altText || ''}\n`;
+                        }).join('\n');
+                        await window.electronAPI.writeToClipboard(formattedText);
+                        onShowToast('Copied all pin metadata to clipboard!', 'success');
+                      }}
+                    >
+                      Copy All Text
+                    </Button>
+                  )}
+                  {matchedItems.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Settings2 className="w-3.5 h-3.5" />}
+                      onClick={() => setShowBulkApplyPanel(!showBulkApplyPanel)}
+                    >
+                      {showBulkApplyPanel ? 'Hide Bulk Edit' : 'Bulk Edit'}
+                    </Button>
+                  )}
                 </div>
               }
             >
+              {matchedItems.length > 0 && showBulkApplyPanel && (
+                <div className="mb-4 p-3 bg-slate-950/80 rounded-xl border border-slate-850 flex flex-col gap-3 animate-fade-in text-xs">
+                  <span className="font-extrabold uppercase tracking-wider text-[10px] text-violet-400 block font-mono">✦ Bulk Edit Utility Panel</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase font-bold text-slate-500">Apply Title</label>
+                      <input
+                        type="text"
+                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-violet-500/50"
+                        placeholder="Apply title to all"
+                        value={bulkApplyTitle}
+                        onChange={(e) => setBulkApplyTitle(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase font-bold text-slate-500">Apply Description</label>
+                      <input
+                        type="text"
+                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-violet-500/50"
+                        placeholder="Apply description to all"
+                        value={bulkApplyDesc}
+                        onChange={(e) => setBulkApplyDesc(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] uppercase font-bold text-slate-500">Apply Click-through Link</label>
+                      <input
+                        type="text"
+                        className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-violet-500/50"
+                        placeholder="Apply link to all"
+                        value={bulkApplyUrl}
+                        onChange={(e) => setBulkApplyUrl(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setBulkApplyTitle('');
+                        setBulkApplyDesc('');
+                        setBulkApplyUrl('');
+                      }}
+                      className="px-3 py-1 bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-850 cursor-pointer"
+                    >
+                      Reset Fields
+                    </button>
+                    <button
+                      onClick={handleApplyBulkFields}
+                      className="px-3 py-1 bg-violet-900 border border-violet-850 rounded text-slate-100 hover:bg-violet-800 cursor-pointer font-bold"
+                    >
+                      Apply To All Pins
+                    </button>
+                  </div>
+                </div>
+              )}
               {matchedItems.length === 0 ? (
                 <div className="text-center py-16 text-slate-500 border border-dashed border-slate-850 rounded-2xl bg-slate-950/5">
                   <ListChecks className="w-10 h-10 text-slate-700 mx-auto mb-3" />
@@ -2686,7 +2911,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                             />
                           </div>
                           
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 font-mono">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 font-mono items-center">
                             <span className="truncate max-w-[200px]" title={item.filename}>
                               File: {item.filename.split(/[\\/]/).pop()}
                             </span>
@@ -2700,6 +2925,13 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                                 📌 Board: {item.batchBoardName}
                               </span>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCardToAll(idx)}
+                              className="text-violet-455 font-bold hover:underline cursor-pointer transition-colors ml-auto uppercase text-[9px] tracking-wider"
+                            >
+                              ✦ Copy metadata to all other pins
+                            </button>
                           </div>
                         </div>
                       </div>

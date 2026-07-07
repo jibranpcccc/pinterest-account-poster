@@ -487,7 +487,7 @@ function registerIpcHandlers() {
       case 'validatePinMetadata':
         return ai.validatePinMetadata(payload);
       case 'analyzeImage':
-        return ai.analyzeImage(payload.imagePath, payload.boardName, payload.topic, payload.destinationUrl);
+        return ai.analyzeImage(payload.imagePath, payload.boardName, payload.topic, payload.destinationUrl, payload.imagePrompt);
       default:
         throw new Error(`Unknown AI action: ${action}`);
     }

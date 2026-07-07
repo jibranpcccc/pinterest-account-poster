@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-07-07
+### Redesigned
+- **Bulk Uploader Step-by-Step UI Layout**: Restructured the config layout in the bulk importer panel to follow flat sibling-step cards (Step 1: Upload, Step 2: Destination Link, Step 3: Target Boards, Step 4: Image Generation Prompts, Step 5: Compile & Add Batch, Step 6: Mapping Preview Grid). Removed nested card components to clean up structural visuals.
+
+### Added
+- **Multi-Line Generation Prompts**: Added a dedicated textarea to input one-to-one image generation prompts corresponding to the uploaded image order.
+- **Bulk Load Text File**: Added a file selector button to load custom prompt text files (`.txt`/`.csv`) in bulk.
+- **Copy All Text Button**: Added a native Electron clipboard utility button in the Mapping Preview Grid header to copy all compiled pin metadata to the clipboard at once.
+- **Bulk Apply Utility Panel**: Added a header-collapsible utility bar to bulk-apply title, description, and link adjustments to all preview items.
+- **Row-Level Propagation**: Added a quick "Copy metadata to all other pins" row action link to propagate custom card values across the grid.
+
+### Optimized
+- **Prompt-Only Mode (Image Loading Bypass)**: Configured the backend AI processor to skip physical file parsing, resizing, scaling, and base64 conversions when an image prompt is present, directly using the prompt text as the visual source of truth for Kimi 2.6.
+- **Parallel Vision & SEO Concurrency**: Refactored the bulk AI generator to process up to 10 image-prompt SEO metadata queries in parallel instead of sequentially.
+- **API Request Retries**: Integrated automatic fallback retries (up to 3 times) for failed image-prompt analysis calls before applying safe static backups.
+- **Tailored Pinterest SEO Prompt**: Prompted Kimi to frontload board/search terms in the first 30 characters of the Title, place primary keywords in the first sentence of the Description, and restrict hashtags to 0-2 for maximum Pinterest indexing compliance.
+
 ## [1.0.4] - 2026-07-06
 ### Fixed — Full SEO Pipeline Audit (5 Gaps)
 - **GAP-1 🔴**: `generateSEOComplete` (used by "Generate All" button) now instructs AI to write 400-500 character descriptions instead of the old 150-250 char limit. All buttons now produce rich, long descriptions consistently.

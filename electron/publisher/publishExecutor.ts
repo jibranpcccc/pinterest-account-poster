@@ -124,11 +124,9 @@ export class PublishExecutor {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
     console.log(`[Fingerprint] Applying: ${FingerprintManager.getSummary(fingerprint)}`);
 
-    // CRITICAL FIX: Default headless to FALSE — file upload dialogs require visible browser
-    const headless = settings.headlessQueue === true ? true : false;
-
+    // Always run headless — file uploads use setInputFiles() which works without a visible browser
     const launchOptions: any = {
-      headless,
+      headless: true,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
       args: ['--start-maximized', '--disable-blink-features=AutomationControlled']
