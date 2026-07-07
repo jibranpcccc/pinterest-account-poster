@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-07-07
+### Changed
+- **Pinterest SEO Prompt Finalization**: Replaced the Kimi AI SEO metadata prompt with the absolute latest expert master prompt. The new instructions strictly enforce 5 rotation CTAs, strictly ban specific clickbait vocabulary ("stunning", "must-have", "viral"), strictly enforce inclusive language ("person", "someone with", avoiding ethnicity/gender unless explicitly dictated by the input prompt), and emphasize the visual data as the sole source of truth with extreme prejudice to prevent any hallucinations of accessories, extensions, or styles not present in the image prompt.
+
 ## [1.0.9] - 2026-07-07
 ### Changed
 - **Universal Global SEO Prompt**: Completely overhauled the Pinterest SEO generation prompt to be universal and inclusive for all global hairstyles, demographics, genders, ethnicities, and hair patterns (men, women, kids, straight, curly, coily, fades, etc.) instead of hardcoding rules specifically for Black women's hairstyles. It now dynamically extracts gender and hair type strictly from the input data while maintaining the high-quality metadata structures.

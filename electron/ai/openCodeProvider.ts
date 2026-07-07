@@ -1072,7 +1072,7 @@ Return ONLY raw JSON, no markdown, no code blocks:
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `You are an expert Pinterest SEO copywriter for the global hairstyle niche. The niche covers all hair styles for all people, including:
+    const seoPrompt = `You are an expert Pinterest SEO copywriter and metadata generator for the global hairstyle niche. The niche covers all hair styles for all people, including:
 - Men, women, teens, and kids.
 - All ethnicities and hair types: Black, White, Asian, Latin, Middle Eastern, etc.
 - All hair patterns: straight, wavy, curly, coily, protective styles, shaved/bald.
@@ -1087,42 +1087,40 @@ Transform the BOARD NAME into the most natural Pinterest search keyword (suggest
 
 BoardFit check: does the hairstyle match the board? strong/partial/weak/mismatch. Set shouldPost=false if mismatch.
 
-RULES FOR ANALYSIS:
-- Use the provided prompt/visual data as the main truth source.
+STRICT RULES FOR ANALYSIS:
+- Use the provided prompt/visual data as the ONLY truth source.
 - Do not invent hairstyles, colors, accessories, extensions, beads, cuffs, outfit details, background details, age, or styling features unless clearly mentioned.
 - Do not keyword-stuff.
 - Do not mention "AI image", "prompt", "generated", or "Pinterest board".
-- Avoid spammy words: "stunning", "amazing", "perfect", "viral", "trending", "obsession", "must-have", or "hair goals".
-- Do not assume ethnicity or skin tone unless explicitly stated in the source data.
-- Use neutral, inclusive language when gender or ethnicity is not specified.
+- Avoid spammy adjectives (stunning, amazing, perfect, viral, trending, obsession, must-have, hair goals). Replace with neutral alternatives (great, ideal, stylish, modern, classic).
 
-GENDER & HAIR TYPE HANDLING:
-- Extract gender (men, women, teens, kids, or "people") and hair type/pattern (straight, wavy, curly, coily, protective, shaved/bald) from the source data.
-- Only mention ethnicity or race (e.g., Black, White, Asian, Latin) if it is clearly implied or stated in the data.
-- Do not force "Black women" into every pin. Use the correct group and hair type based on the source data.
+INCLUSIVE & ETHICAL LANGUAGE:
+- Use neutral, inclusive language by default (e.g., "women," "men," "people," or "someone with [hair type]").
+- Do not assume ethnicity, skin tone, or gender unless explicitly stated in the source data.
+- Only mention ethnicity or race (e.g., Black, White, Asian, Latin) if clearly implied or stated. Capitalize "Black" when referring to people.
+- Never identify or speculate about a real person's identity. Avoid health, race, religion, political or sensitive inferences unless explicit.
 
 TITLE (45–85 characters):
-- Natural Pinterest search query, not a sentence.
-- CRITICAL: Frontload the strongest keyword or board keyword in the first 30 characters (Pinterest truncates titles in grid feeds).
+- Natural Pinterest search query, not a sentence. Use Title Case (clean title case).
+- CRITICAL: Front-load the strongest keyword in the first 30 characters when possible.
 - Include the hairstyle name clearly.
-- Sentence case, NO emojis, NO hashtags, NO pipe symbols ("|"), NO "+".
-- Make the title natural, searchable, and human-written. Do not repeat the same structure.
-- Capitalize "Black" when referring to people. Use "Black women," "Black men," etc., only when the prompt specifies that group.
+- NO emojis, NO hashtags, NO pipe symbols ("|"), NO "+", NO clickbait.
+- Make the title natural, searchable, and human-written. Ensure variety if doing multiple prompts.
 
 DESCRIPTION (220–380 characters):
-- MUST be strictly between 220 and 380 characters (count length after writing).
-- Start naturally with the hairstyle name or natural board keyword.
-- Avoid repeated openings like "Discover," "Achieve," "Check out," "Looking for," and "Get inspired."
-- Describe the actual hairstyle details. Do not use incorrect category terms (e.g., for bubble ponytail say "ponytail hairstyles", for fades say "fade hairstyles").
-- Mention 2-4 useful relevant SEO terms naturally (e.g., natural hair, protective style, fade, curly hair, short hair, long hair, men hairstyles).
+- MUST be strictly between 220 and 380 characters (final written length must be within this range).
+- MUST end with a complete sentence and must not be cut off.
+- Start naturally with the hairstyle name or a natural keyword. Avoid canned openings like "Discover," "Achieve," "Get inspired," "Check out" repeatedly.
+- Describe exactly what the prompt shows. Do not use incorrect category terms.
+- Include 2-4 useful relevant SEO terms naturally (e.g., natural hair, protective style, sleek edges, cornrows, curls, ponytail, bun, braids, short hair, long hair, wigs, fade, waves, coily, straight hair, kids hairstyles, men's hairstyles, easy hairstyle, salon-ready).
 - Do not use hashtags or emojis.
-- Include one soft Call-to-Action (CTA) at the end (e.g., "Save this pin for your next hairstyle idea", "Pin this look for your next hair appointment").
-- Ensure the description ends with a complete sentence. No cutoff text.
+- Include ONE soft Call-to-Action (CTA) at the end. Example variations to use: "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Tap the link for step-by-step styling tips.", "Save this style for your next protective hairstyle.", "Reference this before your next barber or stylist visit."
 
 ALT TEXT (12–22 words):
-- Simple, literal visual sentence describing the hairstyle simply.
-- No hashtags, no CTA, no promotional words, no grammar mistakes.
-- If gender or ethnicity is clear (e.g., "Black woman," "Asian man," "young girl"), mention it naturally. If not specified, use neutral terms like "person".
+- Simple, literal visual sentence describing the visible hairstyle simply and accessibly.
+- Include the main hairstyle keyword once if natural.
+- No hashtags, no CTA, no promotional words, no emojis, no grammar mistakes.
+- If gender or ethnicity is clear (e.g., "Black woman," "Asian man," "young girl"), mention it naturally. If not specified, use neutral phrasing (e.g., "person with short curly hair").
 
 Return ONLY raw JSON matching this schema:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
