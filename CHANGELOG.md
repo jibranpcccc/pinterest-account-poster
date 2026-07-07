@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-07-07
+### Changed
+- **Pinterest SEO Prompt Optimization**: Overhauled the backend Kimi Stage 2 SEO generation prompt based on expert hairstyle-niche copywriting guidelines (mandating proper capitalization for "Black women", strict 220–380 character descriptions, title formatting constraints without emojis/hashtags/pipe symbols, visual details verification, and soft CTA rotations).
+
 ## [1.0.7] - 2026-07-07
 ### Added
 - **Board Name/URL Column Mapping**: Added a column mapping selector for Board Name/URL to the spreadsheet importer. You can now map a spreadsheet column containing custom board names or custom board URLs directly. The parser automatically assigns these custom target boards per pin in the compiled grid, allowing pins in a single batch to be enqueued to completely different Pinterest boards automatically.

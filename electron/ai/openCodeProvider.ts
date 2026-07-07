@@ -1072,37 +1072,46 @@ Return ONLY raw JSON, no markdown, no code blocks:
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `You are a Pinterest SEO specialist for hair content. Write metadata for a pin.
+    const seoPrompt = `You are an expert Pinterest SEO copywriter for the hairstyle niche. The niche is 100% hairstyles (including Black women's hairstyles, natural hairstyles, protective styles, wigs, braids, curls, ponytails, short hairstyles, kids' hairstyles, and hair care).
 
-BOARD: ${boardName || 'none'}
+Write Pinterest metadata (Title, Description, Alt Text) for one pin.
+
+BOARD NAME: ${boardName || 'none'}
 ${truthSource}
 
-Transform BOARD into the most natural Pinterest search keyword (suggestedBoardKeyword). Clean awkward phrasing. Never create "hair hair", "hairstyle hair", or "hair styling hair".
+Transform the BOARD NAME into the most natural Pinterest search keyword (suggestedBoardKeyword). Clean any awkward phrasing (e.g. "pony tailed hairstyle black women" -> "ponytail hairstyle for Black women"). Never create double phrases like "hair hair" or "hairstyle hair".
 
 BoardFit check: does the hairstyle match the board? strong/partial/weak/mismatch. Set shouldPost=false if mismatch.
 
-TITLE (40-100 chars):
+RULES FOR ANALYSIS:
+- Use the provided prompt/visual data as the main truth source.
+- Do not invent hairstyles, colors, accessories, extensions, beads, cuffs, outfit details, background details, age, or styling features unless they are clearly mentioned in the source data.
+- Do not keyword-stuff.
+- Do not mention "AI image", "prompt", "generated", or "Pinterest board".
+- Capitalize "Black women" correctly in titles, descriptions, and alt text. Never use "black women" lowercase.
+- Avoid spammy words: "stunning", "amazing", "perfect", "viral", "trending", "obsession", "must-have", or "hair goals".
+
+TITLE (45–85 characters):
 - Natural Pinterest search query, not a sentence.
-- CRITICAL: Frontload the main search keyword or board keyword in the FIRST 30 characters (since Pinterest truncates grid previews).
-- If boardFit strong/partial: include board keyword naturally.
-- If boardFit weak/mismatch: write accurate to image only, no board keyword.
-- At least 1 specific visual detail (color, texture, style).
-- Sentence case, 0-1 emoji, NO "+", NO "hair hair", NO "hairstyle hair".
-- NEVER paste board name verbatim if it sounds robotic.
-- Pattern: ${ patternSeed === 0 ? 'How-to angle' : patternSeed === 1 ? 'Feature angle' : patternSeed === 2 ? 'Benefit angle' : 'Direct style name angle' }
+- CRITICAL: Frontload the strongest keyword or board keyword in the first 30 characters (Pinterest truncates titles in grid feeds).
+- Include the hairstyle name clearly.
+- Sentence case, NO emojis, NO hashtags, NO pipe symbols ("|"), NO "+".
+- Make the title natural, searchable, and human-written. Do not repeat the same structure again and again.
 
-DESCRIPTION (150-400 chars):
-- CRITICAL: Open with a highly engaging first sentence that directly includes the primary search keyword and hairstyle.
-- Describe the exact hairstyle details and styling notes.
-- Do NOT claim layers, bangs, face-shape benefits unless confirmed in vision data.
-- Include 2-3 natural LSI search phrases. Do NOT stuff keywords.
-- Include a strong, helpful call-to-action (e.g. "Save this pin for inspiration", "Tap to see the full look").
-- Avoid generic filler phrases like "clean natural finish", "frames the face", "works every face shape".
-- Do NOT use excessive hashtags (maximum 0-2 highly relevant tags, focusing instead on natural sentences).
+DESCRIPTION (220–380 characters):
+- MUST be strictly between 220 and 380 characters (count length after writing).
+- Start naturally with the hairstyle name or natural board keyword.
+- Avoid repeated openings like "Discover," "Achieve," "Check out," "Looking for," and "Get inspired."
+- Describe the actual hairstyle details. Do not use incorrect category terms (e.g., for bubble ponytail say "ponytail hairstyles" not "braided hairstyles"; for curls say "curly hairstyles").
+- Do not use hashtags or emojis.
+- Include one soft Call-to-Action (CTA) at the end (e.g. "Save this pin for your next hairstyle idea", "Pin this look for your next hair appointment", "Tap the link for more everyday hairstyle ideas").
+- Ensure the description ends with a complete sentence. No cutoff text.
 
-ALT TEXT (max 20 words): 1 literal sentence, no hashtags, no CTA.
+ALT TEXT (12–22 words):
+- Simple, literal visual sentence describing the hairstyle simply.
+- No hashtags, no CTA, no promotional words, no grammar mistakes.
 
-Return ONLY raw JSON:
+Return ONLY raw JSON matching this schema:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
 
 
