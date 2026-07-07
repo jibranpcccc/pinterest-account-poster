@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-07-07
+### Changed
+- **Universal Global SEO Prompt**: Completely overhauled the Pinterest SEO generation prompt to be universal and inclusive for all global hairstyles, demographics, genders, ethnicities, and hair patterns (men, women, kids, straight, curly, coily, fades, etc.) instead of hardcoding rules specifically for Black women's hairstyles. It now dynamically extracts gender and hair type strictly from the input data while maintaining the high-quality metadata structures.
+
 ## [1.0.8] - 2026-07-07
 ### Changed
 - **Pinterest SEO Prompt Optimization**: Overhauled the backend Kimi Stage 2 SEO generation prompt based on expert hairstyle-niche copywriting guidelines (mandating proper capitalization for "Black women", strict 220–380 character descriptions, title formatting constraints without emojis/hashtags/pipe symbols, visual details verification, and soft CTA rotations).
