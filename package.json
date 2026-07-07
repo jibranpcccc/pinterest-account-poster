@@ -53,6 +53,7 @@
       "dist-electron/**/*",
       "dist/**/*",
       "package.json",
+      "cloudflare_accounts.txt",
       "node_modules/**/*",
       "!**/.git/**",
       "!**/node_modules/.cache/**",

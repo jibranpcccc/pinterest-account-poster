@@ -1,7 +1,7 @@
 import { DbManager } from '../database/db';
 import * as fs from 'fs';
 import * as path from 'path';
-import { nativeImage } from 'electron';
+import { nativeImage, app } from 'electron';
 
 export interface AIInput {
   topic?: string;
@@ -227,7 +227,7 @@ const _PROJECT_ROOT = (() => {
 })();
 
 // ── Local status file — keeps track of exhausted (429) accounts ──
-const LOCAL_CF_STATUS_PATH = path.join(_PROJECT_ROOT, 'cloudflare_status.json');
+const LOCAL_CF_STATUS_PATH = path.join(app.getPath('userData'), 'cloudflare_status.json');
 // ── Local accounts file — copy of cloudflare_working_accounts.txt ──
 const LOCAL_CF_ACCOUNTS_PATH = path.join(_PROJECT_ROOT, 'cloudflare_accounts.txt');
 
