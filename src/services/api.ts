@@ -8,6 +8,12 @@ declare global {
       deleteAccount: (id: string) => Promise<void>;
       openPinterestSession: (accountId: string) => Promise<boolean>;
       verifyPinterestSession: (accountId: string) => Promise<boolean>;
+      fetchAnalytics: (accountId: string) => Promise<any>;
+
+      getRepinJobs: () => Promise<any[]>;
+      saveRepinJob: (job: any) => Promise<any>;
+      deleteRepinJob: (id: string) => Promise<void>;
+      startRepinJob: (id: string) => Promise<boolean>;
 
       getBoards: (accountId: string) => Promise<Board[]>;
       fetchBoardsFromPinterest: (accountId: string) => Promise<Board[]>;

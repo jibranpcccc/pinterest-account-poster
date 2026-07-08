@@ -28,7 +28,7 @@ async function build() {
     platform: 'node',
     target: 'node20',
     outdir: path.join(__dirname, '../dist-electron'),
-    external: ['electron', 'sqlite3', 'playwright', 'better-sqlite3'],
+    external: ['electron', 'sqlite3', 'playwright', 'playwright-core', 'better-sqlite3'],
     minify: true,
     format: 'cjs'
   });

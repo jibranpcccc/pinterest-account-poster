@@ -1,0 +1,5 @@
+- `[x]` Install `jimp` package
+- `[x]` Create `electron/publisher/aiImageCleaner.ts` implementing the footprint removal
+- `[x]` Update `electron/publisher/publishExecutor.ts` to call the cleaner
+- `[x]` Test build compilation
+- `[x]` Create walkthrough.md

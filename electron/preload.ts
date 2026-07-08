@@ -8,6 +8,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAccount: (id: string) => ipcRenderer.invoke('db:deleteAccount', id),
   openPinterestSession: (accountId: string) => ipcRenderer.invoke('pinterest:openSession', accountId),
   verifyPinterestSession: (accountId: string) => ipcRenderer.invoke('pinterest:verifySession', accountId),
+  fetchAnalytics: (accountId: string) => ipcRenderer.invoke('pinterest:fetchAnalytics', accountId),
+
+  // Repin
+  getRepinJobs: () => ipcRenderer.invoke('db:getRepinJobs'),
+  saveRepinJob: (job: any) => ipcRenderer.invoke('db:saveRepinJob', job),
+  deleteRepinJob: (id: string) => ipcRenderer.invoke('db:deleteRepinJob', id),
+  startRepinJob: (id: string) => ipcRenderer.invoke('repin:start', id),
 
   // Boards
   getBoards: (accountId: string) => ipcRenderer.invoke('db:getBoards', accountId),

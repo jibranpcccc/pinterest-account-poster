@@ -3,7 +3,7 @@ import { version } from '../package.json';
 import { 
   LayoutDashboard, Users, FolderHeart, PlusCircle, 
   ListOrdered, FileText, ScrollText, Settings as SettingsIcon,
-  Sparkles, AlertTriangle, Zap
+  Sparkles, AlertTriangle, Zap, BarChart2, Repeat
 } from 'lucide-react';
 
 // Import Screens
@@ -15,6 +15,8 @@ import { Queue } from './screens/Queue';
 import { Drafts } from './screens/Drafts';
 import { Logs } from './screens/Logs';
 import { Settings } from './screens/Settings';
+import { Analytics } from './screens/Analytics';
+import { AutoRepin } from './screens/AutoRepin';
 
 // Import Components
 import { Toast, ToastType } from './components/Toast';
@@ -28,6 +30,8 @@ const NAV_ITEMS = [
   { id: 'create', label: 'Create Pin', icon: PlusCircle },
   { id: 'queue', label: 'Publish Queue', icon: ListOrdered },
   { id: 'drafts', label: 'Drafts', icon: FileText },
+  { id: 'repin', label: 'Auto Repin', icon: Repeat },
+  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -313,6 +317,12 @@ export default function App() {
           )}
           {activeScreen === 'drafts' && (
             <Drafts accounts={accounts} drafts={drafts} onRefreshDrafts={fetchDrafts} onEditDraft={handleEditDraftRequest} onDeleteDraft={handleDeleteDraft} onSaveDraft={handleSaveDraft} onAddQueueJob={handleAddQueueJob} onNavigate={handleNavigate} onShowToast={showToast} />
+          )}
+          {activeScreen === 'repin' && (
+            <AutoRepin accounts={accounts} onShowToast={showToast} />
+          )}
+          {activeScreen === 'analytics' && (
+            <Analytics accounts={accounts} onShowToast={showToast} />
           )}
           {activeScreen === 'logs' && (
             <Logs logs={logs} onRefreshLogs={fetchLogs} onShowToast={showToast} />

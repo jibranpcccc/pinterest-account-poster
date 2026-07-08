@@ -13,9 +13,10 @@ import * as fs from 'fs';
  * 6. Natural compression (JPEG Q=92)
  * 
  * @param imagePath Path to the original image
+ * @param watermarkText Optional text to watermark onto the image
  * @returns Path to the newly created cleaned image
  */
-export async function scrubAiFootprint(imagePath: string): Promise<string> {
+export async function scrubAiFootprint(imagePath: string, watermarkText?: string): Promise<string> {
     try {
         console.log(`[AI Scrubber] Starting cleaning process for ${imagePath}`);
         
@@ -49,6 +50,29 @@ export async function scrubAiFootprint(imagePath: string): Promise<string> {
         // Contrast takes a number from -1 to +1
         const c = (Math.random() * 0.06) - 0.03; // -0.03 to +0.03
         image.contrast(c);
+
+        // Optional: Watermark
+        if (watermarkText) {
+            try {
+                // Using built in font from Jimp
+                const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+                
+                // Calculate position for bottom right corner with some padding
+                const textWidth = Jimp.measureText(font, watermarkText);
+                const textHeight = Jimp.measureTextHeight(font, watermarkText, image.getWidth());
+                
+                const padding = 20;
+                const x = image.getWidth() - textWidth - padding;
+                const y = image.getHeight() - textHeight - padding;
+                
+                // Print watermark (if image is large enough)
+                if (x > 0 && y > 0) {
+                    image.print(font, x, y, watermarkText);
+                }
+            } catch (fontErr) {
+                console.warn('[AI Scrubber] Failed to apply watermark font', fontErr);
+            }
+        }
 
         // 6. Natural Compression
         // Save as JPEG with Quality 92

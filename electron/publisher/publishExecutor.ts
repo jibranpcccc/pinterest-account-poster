@@ -218,7 +218,12 @@ export class PublishExecutor {
 
       // Clean AI footprint
       onProgress({ progress: 20, message: 'Scrubbing AI metadata and footprint...', status: 'running' });
-      targetImagePath = await scrubAiFootprint(job.imagePath);
+      
+      const watermarkText = settings.watermarkEnabled === true && settings.watermarkText 
+        ? settings.watermarkText 
+        : undefined;
+        
+      targetImagePath = await scrubAiFootprint(job.imagePath, watermarkText);
 
       // Verify image file exists
       if (!fs.existsSync(targetImagePath)) {

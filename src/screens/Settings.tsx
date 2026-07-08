@@ -45,6 +45,10 @@ export const Settings: React.FC<SettingsProps> = ({
   const [aiModel, setAiModel] = useState('opencode-big-pickle');
   const [aiTimeout, setAiTimeout] = useState(30);
 
+  // Watermark Settings
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+  const [watermarkText, setWatermarkText] = useState('');
+
   const loadSettings = async () => {
     setIsLoading(true);
     try {
@@ -77,6 +81,10 @@ export const Settings: React.FC<SettingsProps> = ({
       setAiBaseUrl(data.aiBaseUrl || 'https://api.opencode.dev/v1');
       setAiModel(data.aiModel || 'opencode-big-pickle');
       setAiTimeout(data.aiTimeout || 30);
+
+      // Watermark Settings
+      setWatermarkEnabled(data.watermarkEnabled === true);
+      setWatermarkText(data.watermarkText || '');
     } catch (e) {
       console.error('Failed to load settings:', e);
     } finally {
@@ -111,6 +119,10 @@ export const Settings: React.FC<SettingsProps> = ({
       await api.saveSetting('aiBaseUrl', aiBaseUrl);
       await api.saveSetting('aiModel', aiModel);
       await api.saveSetting('aiTimeout', Number(aiTimeout));
+
+      // Watermark Settings
+      await api.saveSetting('watermarkEnabled', watermarkEnabled);
+      await api.saveSetting('watermarkText', watermarkText);
 
       onShowToast('Settings saved successfully.', 'success');
       await onRefreshSettings();
@@ -347,6 +359,35 @@ export const Settings: React.FC<SettingsProps> = ({
 
         {/* Right Column */}
         <div className="lg:col-span-5 flex flex-col gap-6">
+          {/* Image Protection Settings */}
+          <Card title="Image Protection" subtitle="Automatically watermark uploaded pins" className="border-slate-800">
+            <div className="flex flex-col gap-4 text-xs">
+              {/* Enable Watermark Checkbox */}
+              <div className="flex items-center justify-between bg-slate-950/40 p-3 rounded-xl border border-slate-850">
+                <span className="font-bold text-slate-200">Enable Auto-Watermarking</span>
+                <input
+                  type="checkbox"
+                  checked={watermarkEnabled}
+                  onChange={(e) => setWatermarkEnabled(e.target.checked)}
+                  className="rounded border-slate-800 text-pinterest-red bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+              </div>
+
+              {/* Watermark Text */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] uppercase font-black text-slate-500 tracking-wider">Watermark Text</label>
+                <input
+                  type="text"
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-700 focus:outline-none focus:border-slate-650"
+                  placeholder="e.g. MyBrand.com"
+                  value={watermarkText}
+                  onChange={(e) => setWatermarkText(e.target.value)}
+                  disabled={!watermarkEnabled}
+                />
+              </div>
+            </div>
+          </Card>
+
           {/* AI Settings */}
           <Card title="AI Copilot Integration" subtitle="Optional OpenCode metadata assist" className="border-slate-800">
             <div className="flex flex-col gap-4 text-xs">

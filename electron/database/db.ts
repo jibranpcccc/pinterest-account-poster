@@ -211,6 +211,22 @@ export class DbManager {
       )
     `);
 
+    await this.driver.run(`
+      CREATE TABLE IF NOT EXISTS repin_jobs (
+        id TEXT PRIMARY KEY,
+        accountId TEXT NOT NULL,
+        boardName TEXT NOT NULL,
+        keywords TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        errorMessage TEXT,
+        createdAt TEXT NOT NULL,
+        startedAt TEXT,
+        completedAt TEXT,
+        FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE CASCADE
+      )
+    `);
+
     // Schema Migrations for accounts and queue_jobs tables
     try {
       const accountsCols = await this.driver.query<{ name: string }>('PRAGMA table_info(accounts)');
@@ -436,6 +452,44 @@ export class DbManager {
 
   public async deleteQueueJob(id: string): Promise<void> {
     await this.driver.run('DELETE FROM queue_jobs WHERE id = ?', [id]);
+  }
+
+  // Repin Jobs
+  public async getRepinJobs(): Promise<any[]> {
+    return this.driver.query<any>('SELECT * FROM repin_jobs ORDER BY createdAt ASC');
+  }
+
+  public async saveRepinJob(job: any): Promise<any> {
+    const existing = await this.driver.query<any>('SELECT * FROM repin_jobs WHERE id = ?', [job.id]);
+    const now = new Date().toISOString();
+    if (existing.length > 0) {
+      await this.driver.run(
+        `UPDATE repin_jobs SET 
+          accountId = ?, boardName = ?, keywords = ?, count = ?, status = ?, errorMessage = ?, startedAt = ?, completedAt = ?
+         WHERE id = ?`,
+        [
+          job.accountId, job.boardName, job.keywords, job.count, job.status, job.errorMessage || null,
+          job.startedAt || existing[0].startedAt, job.completedAt || existing[0].completedAt,
+          job.id
+        ]
+      );
+    } else {
+      await this.driver.run(
+        `INSERT INTO repin_jobs (
+          id, accountId, boardName, keywords, count, status, errorMessage, createdAt, startedAt, completedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          job.id, job.accountId, job.boardName, job.keywords, job.count, job.status, job.errorMessage || null,
+          now, job.startedAt || null, job.completedAt || null
+        ]
+      );
+    }
+    const results = await this.driver.query<any>('SELECT * FROM repin_jobs WHERE id = ?', [job.id]);
+    return results[0];
+  }
+
+  public async deleteRepinJob(id: string): Promise<void> {
+    await this.driver.run('DELETE FROM repin_jobs WHERE id = ?', [id]);
   }
 
   public async clearQueue(): Promise<void> {

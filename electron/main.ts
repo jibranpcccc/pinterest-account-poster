@@ -5,6 +5,8 @@ import { DbManager } from './database/db';
 import { setupSecurity } from './security';
 import { PublisherAdapter } from './publisher/publisherAdapter';
 import { OpenCodeProvider } from './ai/openCodeProvider';
+import { AnalyticsFetcher } from './publisher/analyticsFetcher';
+import { RepinExecutor } from './publisher/repinExecutor';
 import { Account, Board, Draft, QueueJob } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -265,6 +267,52 @@ function registerIpcHandlers() {
       lastUsedAt: new Date().toISOString()
     });
     return isConnected;
+  });
+
+  // Analytics handler
+  ipcMain.handle('pinterest:fetchAnalytics', async (_, accountId: string) => {
+    const accounts = await db.query<Account>('SELECT * FROM accounts WHERE id = ?', [accountId]);
+    if (accounts.length === 0) throw new Error('Account not found');
+    
+    const fetcher = new AnalyticsFetcher();
+    return fetcher.fetchAnalytics(accounts[0].id, accounts[0].profilePath);
+  });
+
+  // Repin handlers
+  ipcMain.handle('db:getRepinJobs', async () => {
+    return db.getRepinJobs();
+  });
+
+  ipcMain.handle('db:saveRepinJob', async (_, job: any) => {
+    return db.saveRepinJob(job);
+  });
+
+  ipcMain.handle('db:deleteRepinJob', async (_, id: string) => {
+    return db.deleteRepinJob(id);
+  });
+
+  ipcMain.handle('repin:start', async (_, jobId: string) => {
+    const jobs = await db.query<any>('SELECT * FROM repin_jobs WHERE id = ?', [jobId]);
+    if (jobs.length === 0) throw new Error('Job not found');
+    const job = jobs[0];
+    
+    const accounts = await db.query<Account>('SELECT * FROM accounts WHERE id = ?', [job.accountId]);
+    if (accounts.length === 0) throw new Error('Account not found');
+    
+    const executor = new RepinExecutor();
+    
+    // Fire and forget
+    executor.executeRepinJob(job, accounts[0].profilePath, async (msg) => {
+      // We could send progress to UI, for now just log it
+      console.log(`[Repin ${job.id}] ${msg}`);
+    }).then(async () => {
+      await db.saveRepinJob({ ...job, status: 'completed', completedAt: new Date().toISOString() });
+    }).catch(async (err) => {
+      await db.saveRepinJob({ ...job, status: 'failed', errorMessage: err.message, completedAt: new Date().toISOString() });
+    });
+    
+    await db.saveRepinJob({ ...job, status: 'running', startedAt: new Date().toISOString() });
+    return true;
   });
 
   // Board handlers
