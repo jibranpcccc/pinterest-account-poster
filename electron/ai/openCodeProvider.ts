@@ -536,6 +536,22 @@ export class OpenCodeProvider {
     return parts.join('\n');
   }
 
+  public async generateRepinKeywords(boardName: string): Promise<string> {
+    const system = `You are a Pinterest SEO expert. 
+Given a Pinterest board name, generate ONE highly relevant and optimized search query that a user would type into Pinterest to find content for this board.
+Keep it short (2-4 words). No quotes, no explanations, just the search query.`;
+
+    const user = `Board Name: "${boardName}"\nGenerate search query:`;
+
+    try {
+      const result = await this.makeChatCompletion(system, user);
+      return result.replace(/['"]/g, '').trim() || boardName;
+    } catch (e) {
+      console.error('Failed to generate repin keywords via AI:', e);
+      return boardName; // fallback to just searching the board name
+    }
+  }
+
   public async generateTitleSuggestions(input: AIInput): Promise<string[]> {
     const system = `You are a Pinterest SEO copywriter for the hairstyle niche.
 Generate 5 unique pin titles.

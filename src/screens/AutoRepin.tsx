@@ -19,8 +19,9 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
 
   // Form State
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
-  const [selectedBoardName, setSelectedBoardName] = useState<string>('');
+  const [selectedBoardNames, setSelectedBoardNames] = useState<string[]>([]);
   const [keywords, setKeywords] = useState<string>('');
+  const [useAIKeywords, setUseAIKeywords] = useState<boolean>(false);
   const [count, setCount] = useState<number>(5);
 
   const fetchJobs = async () => {
@@ -47,23 +48,28 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   }, [selectedAccountId]);
 
   const handleCreateJob = async () => {
-    if (!selectedAccountId || !selectedBoardName || !keywords || count < 1) {
-      onShowToast('Please fill all fields', 'warn');
+    if (!selectedAccountId || selectedBoardNames.length === 0 || (!keywords && !useAIKeywords) || count < 1) {
+      onShowToast('Please select at least one board, and provide keywords (or enable AI)', 'warn');
       return;
     }
 
     try {
-      const id = `repin_${Date.now()}`;
-      await api.saveRepinJob({
-        id,
-        accountId: selectedAccountId,
-        boardName: selectedBoardName,
-        keywords,
-        count,
-        status: 'pending'
-      });
-      onShowToast('Auto-Repin job created!', 'success');
-      setSelectedBoardName('');
+      for (const boardName of selectedBoardNames) {
+        const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        // If AI is used, we set a special marker in keywords to be processed by the backend
+        const finalKeywords = useAIKeywords ? `[AI_AUTO_GENERATE] ${boardName}` : keywords;
+        
+        await api.saveRepinJob({
+          id,
+          accountId: selectedAccountId,
+          boardName: boardName,
+          keywords: finalKeywords,
+          count,
+          status: 'pending'
+        });
+      }
+      onShowToast(`Created ${selectedBoardNames.length} Auto-Repin jobs!`, 'success');
+      setSelectedBoardNames([]);
       setKeywords('');
       setCount(5);
       fetchJobs();
@@ -129,27 +135,69 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] uppercase font-black text-slate-400">Target Board</label>
-                <select 
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none disabled:opacity-50"
-                  value={selectedBoardName}
-                  onChange={e => setSelectedBoardName(e.target.value)}
-                  disabled={!selectedAccountId}
-                >
-                  <option value="">-- Select Board --</option>
-                  {boards.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                </select>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-black text-slate-400">Target Boards</label>
+                  <button 
+                    className="text-[10px] text-blue-400 hover:text-blue-300"
+                    onClick={() => {
+                      if (selectedBoardNames.length === boards.length && boards.length > 0) {
+                        setSelectedBoardNames([]);
+                      } else {
+                        setSelectedBoardNames(boards.map(b => b.name));
+                      }
+                    }}
+                  >
+                    Select All
+                  </button>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl max-h-48 overflow-y-auto p-2 flex flex-col gap-1">
+                  {boards.length === 0 && <div className="text-xs text-slate-500 p-2">No boards found or select an account first.</div>}
+                  {boards.map(b => (
+                    <label key={b.id} className="flex items-center gap-2 text-sm text-slate-300 hover:bg-slate-900 p-2 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="accent-pinterest-red w-4 h-4"
+                        checked={selectedBoardNames.includes(b.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedBoardNames(prev => [...prev, b.name]);
+                          } else {
+                            setSelectedBoardNames(prev => prev.filter(n => n !== b.name));
+                          }
+                        }}
+                      />
+                      <span className="truncate">{b.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] uppercase font-black text-slate-400">Search Keywords</label>
-                <input 
-                  type="text" 
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none placeholder-slate-700"
-                  placeholder="e.g. Modern Home Decor"
-                  value={keywords}
-                  onChange={e => setKeywords(e.target.value)}
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-black text-slate-400">Search Keywords</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="accent-blue-500"
+                      checked={useAIKeywords}
+                      onChange={e => setUseAIKeywords(e.target.checked)}
+                    />
+                    <span className="text-[10px] uppercase font-black text-blue-400">Use AI (Auto-Generate)</span>
+                  </label>
+                </div>
+                {!useAIKeywords ? (
+                  <input 
+                    type="text" 
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none placeholder-slate-700"
+                    placeholder="e.g. Modern Home Decor"
+                    value={keywords}
+                    onChange={e => setKeywords(e.target.value)}
+                  />
+                ) : (
+                  <div className="bg-blue-900/20 border border-blue-900/50 rounded-xl px-3 py-2 text-blue-400 text-xs">
+                    AI will automatically analyze your selected board names and generate highly optimized Pinterest search queries.
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-1">

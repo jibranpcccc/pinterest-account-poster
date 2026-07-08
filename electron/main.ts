@@ -302,7 +302,7 @@ function registerIpcHandlers() {
     const executor = new RepinExecutor();
     
     // Fire and forget
-    executor.executeRepinJob(job, accounts[0].profilePath, async (msg) => {
+    executor.executeRepinJob(job, accounts[0].profilePath, db, async (msg) => {
       // We could send progress to UI, for now just log it
       console.log(`[Repin ${job.id}] ${msg}`);
     }).then(async () => {

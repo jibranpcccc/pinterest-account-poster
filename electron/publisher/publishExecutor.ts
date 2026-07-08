@@ -361,17 +361,17 @@ export class PublishExecutor {
       // ===== STEP 4: Fill Destination URL =====
       onProgress({ progress: 55, message: 'Filling destination URL...', status: 'running' });
       const urlSelectors = [
-        '[data-test-id="pin-draft-link"]',
-        '[data-test-id*="link"]',
-        'textarea[id^="pin-draft-link-"]',
-        'textarea[placeholder*="link" i]',
-        'textarea[placeholder*="destination" i]',
+        'input[data-test-id="pin-draft-link"]',
+        'input[id="pin-draft-link"]',
+        'input[placeholder*="Add a link" i]',
         'input[placeholder*="link" i]',
         'input[placeholder*="destination" i]',
-        '[aria-label*="destination" i]',
-        '[aria-label*="Link" i]',
-        '[aria-label*="Add a destination link" i]',
-        'input[id^="link"]'
+        'textarea[placeholder*="Add a link" i]',
+        'textarea[placeholder*="link" i]',
+        'textarea[placeholder*="destination" i]',
+        'input[aria-label*="destination" i]',
+        'input[aria-label*="Link" i]',
+        'textarea[aria-label*="Link" i]'
       ];
 
       for (const sel of urlSelectors) {

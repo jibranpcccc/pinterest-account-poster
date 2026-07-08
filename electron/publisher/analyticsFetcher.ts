@@ -21,7 +21,7 @@ export class AnalyticsFetcher {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
     
     const launchOptions: any = {
-      headless: true, // We can run this headless for scraping
+      headless: false, // Must be false per AGENTS.md rules to prevent silent crash
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']

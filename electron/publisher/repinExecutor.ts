@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
 import { getChromiumExecutablePath } from './chromiumPath';
+import { DbManager } from '../database/db';
+import { OpenCodeProvider } from '../ai/openCodeProvider';
 
 export interface RepinJob {
   id: string;
@@ -21,6 +23,7 @@ export class RepinExecutor {
   public async executeRepinJob(
     job: RepinJob,
     profilePath: string,
+    db: DbManager,
     onProgress: (msg: string) => void
   ): Promise<void> {
     const fingerprint = FingerprintManager.getOrCreate(profilePath);
@@ -52,8 +55,18 @@ export class RepinExecutor {
         throw new Error('Pinterest session expired. Please log in from Accounts tab.');
       }
       
-      const searchUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(job.keywords)}`;
-      onProgress(`Searching for: ${job.keywords}`);
+      let finalKeywords = job.keywords;
+      
+      // Handle AI Keyword Generation if requested
+      if (finalKeywords.startsWith('[AI_AUTO_GENERATE]')) {
+        onProgress('Analyzing board name with AI to generate optimal keywords...');
+        const aiProvider = new OpenCodeProvider(db);
+        finalKeywords = await aiProvider.generateRepinKeywords(job.boardName);
+        onProgress(`AI selected keywords: "${finalKeywords}"`);
+      }
+
+      const searchUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(finalKeywords)}`;
+      onProgress(`Searching for: ${finalKeywords}`);
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(5000);
       
