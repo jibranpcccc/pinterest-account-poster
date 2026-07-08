@@ -17,9 +17,8 @@ export function getChromiumExecutablePath(): string | undefined {
 
     if (fs.existsSync(browsersDir)) {
       const entries = fs.readdirSync(browsersDir);
-      const chromiumDir = entries.find(e => e.startsWith('chromium-'));
-      if (chromiumDir) {
-        // Try chrome-win (older Playwright) or chrome-win64 (newer Playwright)
+      const chromiumDirs = entries.filter(e => e.startsWith('chromium-'));
+      for (const chromiumDir of chromiumDirs) {
         let exePath = path.join(browsersDir, chromiumDir, 'chrome-win64', 'chrome.exe');
         if (!fs.existsSync(exePath)) {
           exePath = path.join(browsersDir, chromiumDir, 'chrome-win', 'chrome.exe');
@@ -30,8 +29,10 @@ export function getChromiumExecutablePath(): string | undefined {
           return exePath;
         }
       }
+      throw new Error(`Bundled Chromium not found! Checked in: ${browsersDir}. Found entries: ${entries.join(', ')}`);
+    } else {
+      throw new Error(`Playwright browsers directory not found at: ${browsersDir}`);
     }
-    console.warn('[Packaged] Bundled Chromium not found, falling back to Playwright default.');
   }
 
   // Dev mode: let Playwright find its own cached browser automatically

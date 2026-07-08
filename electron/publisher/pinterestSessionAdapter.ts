@@ -37,7 +37,7 @@ export class PinterestSessionAdapter {
       headless: false,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
+      args: ['--start-maximized', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu'],
     };
 
     try {
