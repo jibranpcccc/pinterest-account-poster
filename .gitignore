@@ -32,3 +32,9 @@ local-data/
 # Build releases
 dist-release/
 assets/
+
+# API Credentials
+cloudflare_accounts.txt
+cloudflare_working_accounts.txt
+cloudflare_status.json
+
