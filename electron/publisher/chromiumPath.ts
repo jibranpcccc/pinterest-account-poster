@@ -19,7 +19,12 @@ export function getChromiumExecutablePath(): string | undefined {
       const entries = fs.readdirSync(browsersDir);
       const chromiumDir = entries.find(e => e.startsWith('chromium-'));
       if (chromiumDir) {
-        const exePath = path.join(browsersDir, chromiumDir, 'chrome-win', 'chrome.exe');
+        // Try chrome-win (older Playwright) or chrome-win64 (newer Playwright)
+        let exePath = path.join(browsersDir, chromiumDir, 'chrome-win64', 'chrome.exe');
+        if (!fs.existsSync(exePath)) {
+          exePath = path.join(browsersDir, chromiumDir, 'chrome-win', 'chrome.exe');
+        }
+        
         if (fs.existsSync(exePath)) {
           console.log(`[Packaged] Using bundled Chromium: ${exePath}`);
           return exePath;
