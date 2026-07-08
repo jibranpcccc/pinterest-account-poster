@@ -197,7 +197,7 @@ export class PinterestSessionAdapter {
       headless: true,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
     };
 
     let context: BrowserContext | null = null;
@@ -323,7 +323,7 @@ export class PinterestSessionAdapter {
       headless: true,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled'],
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu'],
     };
 
     let context: BrowserContext | null = null;

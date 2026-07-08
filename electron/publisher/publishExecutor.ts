@@ -124,12 +124,12 @@ export class PublishExecutor {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
     console.log(`[Fingerprint] Applying: ${FingerprintManager.getSummary(fingerprint)}`);
 
-    // Always run headless — file uploads use setInputFiles() which works without a visible browser
+    // Run visible so the user can see if Pinterest blocks the action or asks for a captcha
     const launchOptions: any = {
-      headless: true,
+      headless: false,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--start-maximized', '--disable-blink-features=AutomationControlled']
+      args: ['--start-maximized', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
     };
 
     try {
