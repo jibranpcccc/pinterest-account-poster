@@ -5,6 +5,7 @@ import * as path from 'path';
 import { QueueJob, Account } from '../types';
 import { DbManager } from '../database/db';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
+import { scrubAiFootprint } from './aiImageCleaner';
 
 export interface PublishResult {
   jobId: string;
@@ -132,6 +133,8 @@ export class PublishExecutor {
       args: ['--start-maximized', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
     };
 
+    let targetImagePath = job.imagePath;
+
     try {
       this.activeContext = await chromium.launchPersistentContext(profileDir, launchOptions);
       const injectionScript = generateInjectionScript(fingerprint);
@@ -213,14 +216,18 @@ export class PublishExecutor {
         throw new Error('Pinterest session has expired. Please go to the "Accounts" tab and click "Connect Account (Login)" to sign in again.');
       }
 
+      // Clean AI footprint
+      onProgress({ progress: 20, message: 'Scrubbing AI metadata and footprint...', status: 'running' });
+      targetImagePath = await scrubAiFootprint(job.imagePath);
+
       // Verify image file exists
-      if (!fs.existsSync(job.imagePath)) {
-        throw new Error(`Image file not found on disk: ${job.imagePath}`);
+      if (!fs.existsSync(targetImagePath)) {
+        throw new Error(`Image file not found on disk: ${targetImagePath}`);
       }
 
       // ===== STEP 1: Upload Image =====
       onProgress({ progress: 25, message: 'Uploading image...', status: 'running' });
-      await this.db.addLog('info', `Uploading image: ${path.basename(job.imagePath)}`, { jobId: job.id });
+      await this.db.addLog('info', `Uploading image: ${path.basename(targetImagePath)}`, { jobId: job.id });
 
       // FIXED: Use filechooser event — most reliable way to upload files in Playwright
       let uploadSuccess = false;
@@ -256,7 +263,7 @@ export class PublishExecutor {
         }
 
         const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles(job.imagePath);
+        await fileChooser.setFiles(targetImagePath);
         uploadSuccess = true;
         console.log('[Upload] File chooser method succeeded.');
       } catch (e1) {
@@ -273,7 +280,7 @@ export class PublishExecutor {
           for (const sel of fileInputSelectors) {
             const count = await page.locator(sel).count().catch(() => 0);
             if (count > 0) {
-              await page.locator(sel).first().setInputFiles(job.imagePath);
+              await page.locator(sel).first().setInputFiles(targetImagePath);
               uploadSuccess = true;
               console.log(`[Upload] setInputFiles succeeded with: ${sel}`);
               break;
@@ -750,6 +757,16 @@ export class PublishExecutor {
         await this.activeContext.close().catch(() => {});
         this.activeContext = null;
         this.activePage = null;
+      }
+      
+      // Clean up temporary scrubbed image if it was created
+      if (targetImagePath && targetImagePath !== job.imagePath) {
+        try {
+          fs.unlinkSync(targetImagePath);
+          console.log(`[AI Scrubber] Deleted temp file: ${targetImagePath}`);
+        } catch (e) {
+          console.warn(`[AI Scrubber] Failed to delete temp file: ${targetImagePath}`, e);
+        }
       }
     }
   }

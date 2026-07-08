@@ -35,7 +35,7 @@ export class BoardResolver {
       locale: fpOpts.locale,
       timezoneId: fpOpts.timezoneId,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
     };
 
     let context: BrowserContext | null = null;
