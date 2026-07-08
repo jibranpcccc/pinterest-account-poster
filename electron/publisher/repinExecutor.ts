@@ -5,6 +5,7 @@ import { FingerprintManager, generateInjectionScript } from './fingerprintManage
 import { getChromiumExecutablePath } from './chromiumPath';
 import { DbManager } from '../database/db';
 import { OpenCodeProvider } from '../ai/openCodeProvider';
+import { browserLockManager } from './browserLockManager';
 
 export interface RepinJob {
   id: string;
@@ -40,6 +41,7 @@ export class RepinExecutor {
     let page: Page | null = null;
     
     try {
+      browserLockManager.acquireLock(job.accountId, 'Auto-Repin');
       onProgress('Opening browser...');
       context = await chromium.launchPersistentContext(profilePath, launchOptions);
       const injectionScript = generateInjectionScript(fingerprint);
@@ -149,6 +151,7 @@ export class RepinExecutor {
     } finally {
       if (page) await page.close().catch(() => {});
       if (context) await context.close().catch(() => {});
+      browserLockManager.releaseLock();
     }
   }
 }

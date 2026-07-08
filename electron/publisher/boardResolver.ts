@@ -5,6 +5,7 @@ import * as path from 'path';
 import { Account, Board } from '../types';
 import { DbManager } from '../database/db';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
+import { browserLockManager } from './browserLockManager';
 
 export class BoardResolver {
   private db: DbManager;
@@ -40,6 +41,7 @@ export class BoardResolver {
 
     let context: BrowserContext | null = null;
     try {
+      browserLockManager.acquireLock(account.id, 'Fetch Boards');
       console.log(`Launching board resolver with bundled Chromium...`);
       context = await chromium.launchPersistentContext(profileDir, launchOptions);
       
@@ -216,6 +218,7 @@ export class BoardResolver {
       if (context) {
         await context.close().catch(() => {});
       }
+      browserLockManager.releaseLock();
     }
   }
 }

@@ -23,9 +23,10 @@ We will create a new utility file that implements the 6-layer destruction protoc
 - Add `"jimp": "^0.22.12"` to the dependencies.
 
 #### [MODIFY] `electron/publisher/publishExecutor.ts`
-- Right before `executeJob` uploads the image to Pinterest, it will intercept `job.imagePath`, pass it through `aiImageCleaner.ts`, and save a `_cleaned.jpg` temporary file.
-- The `PublishExecutor` will then upload the 100% clean image to Pinterest.
-- After publication, it will delete the temporary `_cleaned.jpg` file to save disk space.
+- [x] Finish updating `BoardResolver`, `AnalyticsFetcher`, and `PinterestSessionAdapter` to release locks in `finally` blocks.
+- [x] Validate the human-typing emulation (`pressSequentially` replaced with `typeSlowly` + Bezier mouse curves) in `PublishExecutor`.
+- [x] Final audit of the `BrowserLockManager` integration (implemented strict lock release in try/catch/finally across all handlers).
+- [x] Added `browserLockManager.releaseLock` inside error handlers of `pinterestSessionAdapter.ts`, `boardResolver.ts`, and `analyticsFetcher.ts`.
 
 ## User Review Required
 

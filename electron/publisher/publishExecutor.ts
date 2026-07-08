@@ -6,6 +6,7 @@ import { QueueJob, Account } from '../types';
 import { DbManager } from '../database/db';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
 import { scrubAiFootprint } from './aiImageCleaner';
+import { browserLockManager } from './browserLockManager';
 
 export interface PublishResult {
   jobId: string;
@@ -80,10 +81,41 @@ export class PublishExecutor {
     }
   }
 
+  private async simulateHumanMouse(page: Page, selector: string) {
+    try {
+      const element = page.locator(selector).first();
+      const box = await element.boundingBox();
+      if (box) {
+        // Random point inside the element bounding box
+        const targetX = box.x + (box.width * Math.random());
+        const targetY = box.y + (box.height * Math.random());
+        
+        // Emulate Bezier curve path
+        const steps = 10;
+        const currentX = box.x; // Simplified starting point
+        const currentY = box.y; 
+        
+        for (let i = 1; i <= steps; i++) {
+          const x = currentX + (targetX - currentX) * (i / steps) + (Math.random() * 5 - 2.5);
+          const y = currentY + (targetY - currentY) * (i / steps) + (Math.random() * 5 - 2.5);
+          await page.mouse.move(x, y);
+          await this.sleep(Math.random() * 20 + 10); // 10-30ms per step
+        }
+      }
+    } catch (e) {}
+  }
+
+  private async humanClick(page: Page, selector: string) {
+    await this.simulateHumanMouse(page, selector);
+    const element = page.locator(selector).first();
+    await element.click({ force: true, delay: Math.random() * 50 + 20 });
+  }
+
   private async typeSlowly(page: Page, selector: string, text: string, delayMin = 20, delayMax = 60) {
+    await this.simulateHumanMouse(page, selector);
     const element = page.locator(selector).first();
     await element.focus().catch(() => {});
-    await element.click({ force: true }).catch(() => {});
+    await element.click({ force: true, delay: Math.random() * 50 + 20 }).catch(() => {});
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Backspace');
     await this.sleep(200);
@@ -136,6 +168,7 @@ export class PublishExecutor {
     let targetImagePath = job.imagePath;
 
     try {
+      browserLockManager.acquireLock(account.id, 'Publishing Queue');
       this.activeContext = await chromium.launchPersistentContext(profileDir, launchOptions);
       const injectionScript = generateInjectionScript(fingerprint);
       await this.activeContext.addInitScript(injectionScript);
@@ -176,7 +209,7 @@ export class PublishExecutor {
             const emailSelectors = ['input[type="email"]', 'input#email', 'input[name="id"]'];
             for (const sel of emailSelectors) {
               if (await page.locator(sel).first().isVisible().catch(() => false)) {
-                await page.locator(sel).first().fill(email);
+                await this.typeSlowly(page, sel, email);
                 break;
               }
             }
@@ -186,7 +219,7 @@ export class PublishExecutor {
             const passSelectors = ['input[type="password"]', 'input#password', 'input[name="password"]'];
             for (const sel of passSelectors) {
               if (await page.locator(sel).first().isVisible().catch(() => false)) {
-                await page.locator(sel).first().fill(password);
+                await this.typeSlowly(page, sel, password);
                 break;
               }
             }
@@ -196,7 +229,7 @@ export class PublishExecutor {
             const loginBtns = ['button[type="submit"]', 'button:has-text("Log in")', 'button:has-text("Log In")'];
             for (const sel of loginBtns) {
               if (await page.locator(sel).first().isVisible().catch(() => false)) {
-                await page.locator(sel).first().click();
+                await this.humanClick(page, sel);
                 break;
               }
             }
@@ -479,11 +512,8 @@ export class PublishExecutor {
         }
 
         // Type board name in search
-        const searchInput = page.locator('input#pickerSearchField, input[aria-label*="Search through your boards" i], input[type="search"][placeholder="Search"]').first();
-        await searchInput.click();
-        await page.keyboard.press('Control+A');
-        await page.keyboard.press('Backspace');
-        await searchInput.fill(job.boardName);
+        const searchInputSelector = 'input#pickerSearchField, input[aria-label*="Search through your boards" i], input[type="search"][placeholder="Search"]';
+        await this.typeSlowly(page, searchInputSelector, job.boardName);
         await this.sleep(1200);
 
         // FIXED: Use precise board item targeting — avoid over-broad div:has-text
@@ -530,9 +560,10 @@ export class PublishExecutor {
             await createBoardBtn.click();
             await this.sleep(2000);
 
-            const nameInput = page.locator('input[name="boardName"], input[id*="board-name"], input[placeholder*="Places to Go"], input[type="text"]').first();
+            const nameInputSelector = 'input[name="boardName"], input[id*="board-name"], input[placeholder*="Places to Go"], input[type="text"]';
+            const nameInput = page.locator(nameInputSelector).first();
             if (await nameInput.isVisible().catch(() => false)) {
-              await nameInput.fill(job.boardName);
+              await this.typeSlowly(page, nameInputSelector, job.boardName);
               await this.sleep(800);
               
               const submitBtn = page.locator('button:has-text("Create"), button[type="submit"], [data-test-id="board-dialog-submit-button"]').first();
@@ -601,7 +632,7 @@ export class PublishExecutor {
                 await locator.click();
                 await page.keyboard.press('Control+A');
                 await page.keyboard.press('Delete');
-                await locator.fill(job.scheduledDate);
+                await this.typeSlowly(page, sel, job.scheduledDate);
                 await page.keyboard.press('Enter');
                 break;
               }
@@ -614,7 +645,7 @@ export class PublishExecutor {
                 await locator.click();
                 await page.keyboard.press('Control+A');
                 await page.keyboard.press('Delete');
-                await locator.fill(job.scheduledTime);
+                await this.typeSlowly(page, sel, job.scheduledTime);
                 await page.keyboard.press('Enter');
                 break;
               }
@@ -763,6 +794,9 @@ export class PublishExecutor {
         this.activeContext = null;
         this.activePage = null;
       }
+      
+      // Release the global browser lock
+      browserLockManager.releaseLock();
       
       // Clean up temporary scrubbed image if it was created
       if (targetImagePath && targetImagePath !== job.imagePath) {

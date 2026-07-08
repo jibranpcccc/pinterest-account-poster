@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
 import { getChromiumExecutablePath } from './chromiumPath';
+import { browserLockManager } from './browserLockManager';
 
 export interface AnalyticsResult {
   accountId: string;
@@ -31,6 +32,7 @@ export class AnalyticsFetcher {
     let page: Page | null = null;
     
     try {
+      browserLockManager.acquireLock(accountId, 'Fetch Analytics');
       context = await chromium.launchPersistentContext(profilePath, launchOptions);
       const injectionScript = generateInjectionScript(fingerprint);
       await context.addInitScript(injectionScript);
@@ -58,51 +60,36 @@ export class AnalyticsFetcher {
         const followersLoc = page.locator('div:text-matches("\\\\d+ followers", "i")').first();
         if (await followersLoc.isVisible().catch(() => false)) {
           const text = await followersLoc.innerText();
-          const match = text.match(/([\d,km]+)\s*followers/i);
+          const match = text.match(/([\d,\.]+[kKmM]?)/);
           if (match) result.followers = match[1];
-        } else {
-          // Alternative fallback
-          const allText = await page.content();
-          const fallbackMatch = allText.match(/([\d,km]+)\s*followers/i);
-          if (fallbackMatch) result.followers = fallbackMatch[1];
         }
-      } catch (e) {
-        console.warn('Failed to scrape followers', e);
-      }
+      } catch (e) {}
       
       // Attempt to scrape monthly views
       try {
         const viewsLoc = page.locator('div:text-matches("\\\\d+ monthly views", "i")').first();
         if (await viewsLoc.isVisible().catch(() => false)) {
           const text = await viewsLoc.innerText();
-          const match = text.match(/([\d,km]+)\s*monthly views/i);
+          const match = text.match(/([\d,\.]+[kKmM]?)/);
           if (match) result.monthlyViews = match[1];
-        } else {
-          const allText = await page.content();
-          const fallbackMatch = allText.match(/([\d,km]+)\s*monthly views/i);
-          if (fallbackMatch) result.monthlyViews = fallbackMatch[1];
         }
-      } catch (e) {
-        console.warn('Failed to scrape monthly views', e);
-      }
+      } catch (e) {}
       
-      // Step 2: Attempt Business Analytics (Optional)
+      // Step 2: Try to get Business Hub metrics if available
       try {
-        await page.goto('https://www.pinterest.com/business/hub/', { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await page.waitForTimeout(4000);
+        await page.goto('https://www.pinterest.com/business/hub/', { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(3000);
         
         if (!page.url().includes('/login')) {
           const scrapeMetric = async (label: string) => {
-            const loc = page.locator(`text="${label}"`).first();
-            if (await loc.isVisible().catch(() => false)) {
-              // Get innerText of parent tree and regex for numbers
-              const allText = await page.content();
-              // This is a naive heuristic since Pinterest DOM is complex
-              const regex = new RegExp(`>([\\d,\\.kKmM]+)<.*?${label}`, 'i');
-              const match = allText.match(regex);
-              if (match) return match[1];
-            }
-            return 'N/A';
+            try {
+              // Locate the box containing the label, then get the big number inside it
+              const loc = page.locator(`div:has-text("${label}")`).locator('div[title]').first();
+              if (await loc.isVisible().catch(() => false)) {
+                return await loc.innerText();
+              }
+            } catch (e) {}
+            return undefined;
           };
           
           result.impressions = await scrapeMetric('Impressions');
@@ -121,6 +108,7 @@ export class AnalyticsFetcher {
     } finally {
       if (page) await page.close().catch(() => {});
       if (context) await context.close().catch(() => {});
+      browserLockManager.releaseLock();
     }
   }
 }

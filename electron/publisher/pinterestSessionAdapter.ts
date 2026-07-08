@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { Account } from '../types';
 import { DbManager } from '../database/db';
 import { FingerprintManager, generateInjectionScript } from './fingerprintManager';
+import { browserLockManager } from './browserLockManager';
 
 export class PinterestSessionAdapter {
   private db: DbManager;
@@ -41,6 +42,8 @@ export class PinterestSessionAdapter {
     };
 
     try {
+      browserLockManager.acquireLock(account.id, 'Manual Login');
+      
       // Notify UI that browser is now open
       if (onBrowserStatusChange) {
         onBrowserStatusChange({ accountId: account.id, isOpen: true, message: 'Browser window is open. Please log in to Pinterest, then close this window.' });
@@ -106,6 +109,7 @@ export class PinterestSessionAdapter {
             });
           }
 
+          browserLockManager.releaseLock();
           resolve(isConnected);
         });
       });
@@ -115,6 +119,7 @@ export class PinterestSessionAdapter {
       if (onBrowserStatusChange) {
         onBrowserStatusChange({ accountId: account.id, isOpen: false, message: `Failed to open: ${e.message}` });
       }
+      browserLockManager.releaseLock();
       return false;
     }
   }

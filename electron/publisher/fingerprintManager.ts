@@ -443,6 +443,62 @@ export function generateInjectionScript(fp: BrowserFingerprint): string {
       delete window.__pw_manual;
     } catch (e) {}
 
+    // [ANTI-DETECTION] Inject window.chrome to bypass headless checks
+    try {
+      if (!window.chrome) {
+        window.chrome = {
+          app: {
+            isInstalled: false,
+            InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+            RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+          },
+          runtime: {
+            OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+            OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+            PlatformArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+            PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+            PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+            RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' }
+          }
+        };
+      }
+    } catch (e) {}
+
+    // [ANTI-DETECTION] Block WebRTC to prevent local LAN IP leaks
+    try {
+      window.RTCPeerConnection = undefined;
+      window.webkitRTCPeerConnection = undefined;
+      window.mozRTCPeerConnection = undefined;
+      navigator.mediaDevices.enumerateDevices = async () => [];
+    } catch (e) {}
+
+    // [ANTI-DETECTION] Add noise to AudioContext to prevent audio fingerprinting
+    try {
+      if (window.AudioContext || window.webkitAudioContext) {
+        const OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioContextNoise = ${fp.canvasNoiseSeed} / 1000;
+        
+        const ContextProxy = new Proxy(OrigAudioContext, {
+          construct(target, args) {
+            const ctx = new target(...args);
+            const origGetChannelData = ctx.createBuffer(1, 1, 44100).getChannelData.bind(ctx);
+            AudioBuffer.prototype.getChannelData = function(channel) {
+              const data = origGetChannelData(channel);
+              // Inject subtle deterministic noise based on seed
+              for (let i = 0; i < data.length; i++) {
+                data[i] += audioContextNoise;
+              }
+              return data;
+            };
+            return ctx;
+          }
+        });
+        
+        if (window.AudioContext) window.AudioContext = ContextProxy;
+        if (window.webkitAudioContext) window.webkitAudioContext = ContextProxy;
+      }
+    } catch (e) {}
+
     // 10. Performance.now() timing noise (prevents timing-based fingerprinting)
     const origPerfNow = performance.now.bind(performance);
     performance.now = function() {
