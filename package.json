@@ -1,6 +1,6 @@
 {
   "name": "pinterest-pin-publisher",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Safe, user-controlled Pinterest publishing assistant for Windows desktop.",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -62,10 +62,17 @@
       "!**/*.log",
       "!**/cloudflare_working_accounts.txt",
       "!**/node_modules/sqlite3/**",
-      "!**/node_modules/playwright/.local-browsers/**"
+      "!**/node_modules/playwright-core/.local-browsers/**"
     ],
     "asarUnpack": [
       "node_modules/playwright/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/playwright-core/.local-browsers",
+        "to": "playwright-browsers",
+        "filter": ["**/*"]
+      }
     ],
     "win": {
       "target": [
