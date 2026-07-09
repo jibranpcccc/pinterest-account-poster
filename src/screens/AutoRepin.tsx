@@ -20,6 +20,7 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   // Form State
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [selectedBoardNames, setSelectedBoardNames] = useState<string[]>([]);
+  const [manualBoards, setManualBoards] = useState<string>('');
   const [keywords, setKeywords] = useState<string>('');
   const [useAIKeywords, setUseAIKeywords] = useState<boolean>(false);
   const [count, setCount] = useState<number>(5);
@@ -76,7 +77,14 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   };
 
   const handleCreateJob = async () => {
-    if (selectedAccountIds.length === 0 || selectedBoardNames.length === 0 || (!keywords && !useAIKeywords) || count < 1) {
+    // Parse manual boards
+    const manualBoardList = manualBoards.split(/[\n,]+/).map(b => b.trim()).filter(b => b.length > 0);
+    const allBoards = Array.from(new Set([...selectedBoardNames, ...manualBoardList]));
+    
+    // Parse keywords
+    const keywordList = keywords.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 0);
+
+    if (selectedAccountIds.length === 0 || allBoards.length === 0 || (!useAIKeywords && keywordList.length === 0) || count < 1) {
       onShowToast('Please select at least one account, one board, and provide keywords', 'warn');
       return;
     }
@@ -84,23 +92,38 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
     try {
       let created = 0;
       for (const accountId of selectedAccountIds) {
-        for (const boardName of selectedBoardNames) {
-          const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-          const finalKeywords = useAIKeywords ? `[AI_AUTO_GENERATE] ${boardName}` : keywords;
+        for (const boardName of allBoards) {
           
-          await api.saveRepinJob({
-            id,
-            accountId: accountId,
-            boardName: boardName,
-            keywords: finalKeywords,
-            count,
-            status: 'pending'
-          });
-          created++;
+          if (useAIKeywords) {
+            const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            await api.saveRepinJob({
+              id,
+              accountId: accountId,
+              boardName: boardName,
+              keywords: `[AI_AUTO_GENERATE] ${boardName}`,
+              count,
+              status: 'pending'
+            });
+            created++;
+          } else {
+            for (const kw of keywordList) {
+              const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+              await api.saveRepinJob({
+                id,
+                accountId: accountId,
+                boardName: boardName,
+                keywords: kw,
+                count,
+                status: 'pending'
+              });
+              created++;
+            }
+          }
         }
       }
       onShowToast(`Created ${created} Auto-Repin jobs across ${selectedAccountIds.length} accounts!`, 'success');
       setSelectedBoardNames([]);
+      setManualBoards('');
       setKeywords('');
       setCount(5);
       fetchJobs();
@@ -217,6 +240,13 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
                     </label>
                   ))}
                 </div>
+                <textarea 
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none text-xs mt-2 placeholder-slate-600"
+                  placeholder="Or enter manual boards (comma separated)"
+                  rows={2}
+                  value={manualBoards}
+                  onChange={e => setManualBoards(e.target.value)}
+                />
               </div>
 
               <div className="flex flex-col gap-1">
@@ -233,16 +263,16 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
                   </label>
                 </div>
                 {!useAIKeywords ? (
-                  <input 
-                    type="text" 
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none placeholder-slate-700"
-                    placeholder="e.g. Modern Home Decor"
+                  <textarea 
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none text-xs placeholder-slate-600"
+                    placeholder="e.g. interior design, home decor, modern furniture (comma or newline separated)"
                     value={keywords}
+                    rows={4}
                     onChange={e => setKeywords(e.target.value)}
                   />
                 ) : (
-                  <div className="bg-blue-900/20 border border-blue-900/50 rounded-xl px-3 py-2 text-blue-400 text-xs">
-                    AI will automatically analyze your selected board names and generate highly optimized Pinterest search queries.
+                  <div className="bg-emerald-950 border border-emerald-800/50 rounded-xl px-3 py-2 text-emerald-400 text-xs flex items-center gap-2">
+                    <Wand2 className="w-4 h-4" /> AI will auto-generate optimal keywords based on the target board name.
                   </div>
                 )}
               </div>
