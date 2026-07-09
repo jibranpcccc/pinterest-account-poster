@@ -1,6 +1,6 @@
 {
   "name": "pinterest-pin-publisher",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Safe, user-controlled Pinterest publishing assistant for Windows desktop.",
   "main": "dist-electron/main.js",
   "scripts": {

@@ -29,9 +29,9 @@ export const Settings: React.FC<SettingsProps> = ({
   // Settings local states
   const [actionDelayMin, setActionDelayMin] = useState(1.5);
   const [actionDelayMax, setActionDelayMax] = useState(4.0);
-  const [pinDelayMin, setPinDelayMin] = useState(30);
-  const [pinDelayMax, setPinDelayMax] = useState(120);
-  const [accountDelayMin, setAccountDelayMin] = useState(60);
+  const [pinDelayMin, setPinDelayMin] = useState(2);
+  const [pinDelayMax, setPinDelayMax] = useState(5);
+  const [accountDelayMin, setAccountDelayMin] = useState(5);
   const [accountDelayMax, setAccountDelayMax] = useState(180);
   const [maxRetries, setMaxRetries] = useState(2);
   const [screenshotOnError, setScreenshotOnError] = useState(true);
@@ -254,14 +254,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   <span className="text-xs font-semibold text-slate-350">Pin-to-Pin Delay (Min/Max):</span>
                   <input
                     type="number"
-                    min="5"
+                    min="0"
                     className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 text-center"
                     value={pinDelayMin}
                     onChange={(e) => setPinDelayMin(parseInt(e.target.value))}
                   />
                   <input
                     type="number"
-                    min="5"
+                    min="0"
                     className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 text-center"
                     value={pinDelayMax}
                     onChange={(e) => setPinDelayMax(parseInt(e.target.value))}

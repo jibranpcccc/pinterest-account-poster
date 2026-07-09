@@ -195,12 +195,12 @@ export class PublisherAdapter {
 
           if (nextJob && nextJob.accountId !== job.accountId) {
             // Account changed!
-            const [accMin, accMax] = settings.accountDelay || [30, 60];
+            const [accMin, accMax] = settings.accountDelay || [5, 10];
             delaySeconds = Math.floor(Math.random() * (accMax - accMin) + accMin);
             delayType = 'account change';
           } else {
             // Same account pin delay
-            const [pinMin, pinMax] = settings.pinDelay || [10, 30];
+            const [pinMin, pinMax] = settings.pinDelay || [2, 5];
             delaySeconds = Math.floor(Math.random() * (pinMax - pinMin) + pinMin);
           }
 
