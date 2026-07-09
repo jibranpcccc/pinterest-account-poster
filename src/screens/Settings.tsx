@@ -29,9 +29,9 @@ export const Settings: React.FC<SettingsProps> = ({
   // Settings local states
   const [actionDelayMin, setActionDelayMin] = useState(1.5);
   const [actionDelayMax, setActionDelayMax] = useState(4.0);
-  const [pinDelayMin, setPinDelayMin] = useState(2);
-  const [pinDelayMax, setPinDelayMax] = useState(5);
-  const [accountDelayMin, setAccountDelayMin] = useState(5);
+  const [pinDelayMin, setPinDelayMin] = useState(30);
+  const [pinDelayMax, setPinDelayMax] = useState(45);
+  const [accountDelayMin, setAccountDelayMin] = useState(30);
   const [accountDelayMax, setAccountDelayMax] = useState(180);
   const [maxRetries, setMaxRetries] = useState(2);
   const [screenshotOnError, setScreenshotOnError] = useState(true);

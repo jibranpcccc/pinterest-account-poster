@@ -50,8 +50,8 @@ async function runFleetEngine() {
       isFleetCurrentlyRunningAJob = false;
       
       if (isFleetAutoPilotEnabled) {
-        // Random 5-15 sec cooldown between jobs
-        const cooldownMs = Math.floor(Math.random() * (15000 - 5000 + 1) + 5000);
+        // Random 30-60 sec cooldown between jobs
+        const cooldownMs = Math.floor(Math.random() * (60000 - 30000 + 1) + 30000);
         mainWindow?.webContents.send('fleet:log', `[FLEET] Cooling down for ${Math.round(cooldownMs/1000)}s before next job...`);
         fleetTimeout = setTimeout(() => runFleetEngine(), cooldownMs);
         return;
