@@ -111,7 +111,7 @@ export class PublishExecutor {
     await element.click({ force: true, delay: Math.random() * 50 + 20 });
   }
 
-  private async typeSlowly(page: Page, selector: string, text: string, delayMin = 20, delayMax = 60) {
+  private async typeSlowly(page: Page, selector: string, text: string, delayMin = 2, delayMax = 8) {
     await this.simulateHumanMouse(page, selector);
     const element = page.locator(selector).first();
     await element.focus().catch(() => {});
@@ -145,8 +145,8 @@ export class PublishExecutor {
 
     const screenshotPath = path.join(screenshotDir, `job-${job.id}-${Date.now()}.png`);
 
-    // Pacing delays (seconds to ms)
-    const [actionDelayMin, actionDelayMax] = settings.actionDelay || [1.5, 4.0];
+    // Pacing delays (seconds to ms) - Sped up for faster execution
+    const [actionDelayMin, actionDelayMax] = settings.actionDelay || [0.3, 0.8];
     const getActionDelay = () => (Math.random() * (actionDelayMax - actionDelayMin) + actionDelayMin) * 1000;
 
     await this.db.addLog('info', `Starting publication: "${job.title}" → Board: ${job.boardName}`, { jobId: job.id, accountId: account.id });

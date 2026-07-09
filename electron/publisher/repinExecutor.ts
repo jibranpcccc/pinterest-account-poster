@@ -77,7 +77,7 @@ export class RepinExecutor {
       const searchUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(finalKeywords)}`;
       onProgress(`Searching for: ${finalKeywords}`);
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
       
       let savedCount = 0;
       let attempt = 0;
@@ -100,7 +100,7 @@ export class RepinExecutor {
         
         // Click the pin to open it
         await pin.click();
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(1000);
         
         // Ensure we are on the pin closeup page
         if (!page.url().includes('/pin/')) {
@@ -150,7 +150,7 @@ export class RepinExecutor {
         
         // Go back to search results
         await page.goBack();
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(1000);
       }
       
       onProgress(`Successfully saved ${savedCount}/${job.count} pins.`);
