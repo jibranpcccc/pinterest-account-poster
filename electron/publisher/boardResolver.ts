@@ -127,13 +127,20 @@ export class BoardResolver {
       await this.db.addLog('info', `Found username '${username}' for '${account.nickname}'. Fetching boards...`, { accountId: account.id });
 
       // Navigate to saved pins/boards page (usually https://www.pinterest.com/username/_saved/)
-      await page.goto(`https://www.pinterest.com/${username}/_saved/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(`https://www.pinterest.com/${username}/_saved/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(5000);
 
-      // Scroll down slowly to load all boards
-      for (let i = 0; i < 3; i++) {
-        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-        await page.waitForTimeout(1000);
+      // Aggressive dynamic scroll down to load ALL boards
+      let previousHeight = 0;
+      let currentHeight = await page.evaluate('document.body.scrollHeight') as number;
+      let scrollAttempts = 0;
+
+      while (previousHeight !== currentHeight && scrollAttempts < 15) {
+        previousHeight = currentHeight;
+        await page.evaluate(() => window.scrollBy(0, document.body.scrollHeight));
+        await page.waitForTimeout(2000);
+        currentHeight = await page.evaluate('document.body.scrollHeight') as number;
+        scrollAttempts++;
       }
 
       // Extract boards links

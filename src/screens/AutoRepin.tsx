@@ -18,11 +18,14 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   const [boards, setBoards] = useState<Board[]>([]);
 
   // Form State
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [selectedBoardNames, setSelectedBoardNames] = useState<string[]>([]);
   const [keywords, setKeywords] = useState<string>('');
   const [useAIKeywords, setUseAIKeywords] = useState<boolean>(false);
   const [count, setCount] = useState<number>(5);
+
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState(false);
+  const [fleetLogs, setFleetLogs] = useState<string[]>([]);
 
   const fetchJobs = async () => {
     try {
@@ -40,35 +43,63 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   }, []);
 
   useEffect(() => {
-    if (selectedAccountId) {
-      api.getBoards(selectedAccountId).then(setBoards).catch(console.error);
+    // Listen to Fleet Engine updates
+    if (window.electron) {
+      window.electron.getFleetStatus().then(setAutoPilotEnabled);
+      const unsubUpdate = window.electron.onFleetJobUpdate(() => fetchJobs());
+      const unsubLog = window.electron.onFleetLog((msg) => {
+        setFleetLogs(prev => [msg, ...prev].slice(0, 5));
+      });
+      return () => {
+        unsubUpdate();
+        unsubLog();
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedAccountIds.length > 0) {
+      // Just fetch boards for the first selected account for now to pick from
+      api.getBoards(selectedAccountIds[0]).then(setBoards).catch(console.error);
     } else {
       setBoards([]);
     }
-  }, [selectedAccountId]);
+  }, [selectedAccountIds]);
+
+  const handleToggleAutoPilot = async () => {
+    const newState = !autoPilotEnabled;
+    setAutoPilotEnabled(newState);
+    if (window.electron) {
+      await window.electron.toggleFleet(newState);
+      onShowToast(newState ? 'Auto-Pilot Engine Enabled! It will now process jobs automatically.' : 'Auto-Pilot Engine Disabled.', 'success');
+    }
+  };
 
   const handleCreateJob = async () => {
-    if (!selectedAccountId || selectedBoardNames.length === 0 || (!keywords && !useAIKeywords) || count < 1) {
-      onShowToast('Please select at least one board, and provide keywords (or enable AI)', 'warn');
+    if (selectedAccountIds.length === 0 || selectedBoardNames.length === 0 || (!keywords && !useAIKeywords) || count < 1) {
+      onShowToast('Please select at least one account, one board, and provide keywords', 'warn');
       return;
     }
 
     try {
-      for (const boardName of selectedBoardNames) {
-        const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        // If AI is used, we set a special marker in keywords to be processed by the backend
-        const finalKeywords = useAIKeywords ? `[AI_AUTO_GENERATE] ${boardName}` : keywords;
-        
-        await api.saveRepinJob({
-          id,
-          accountId: selectedAccountId,
-          boardName: boardName,
-          keywords: finalKeywords,
-          count,
-          status: 'pending'
-        });
+      let created = 0;
+      for (const accountId of selectedAccountIds) {
+        for (const boardName of selectedBoardNames) {
+          const id = `repin_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          const finalKeywords = useAIKeywords ? `[AI_AUTO_GENERATE] ${boardName}` : keywords;
+          
+          await api.saveRepinJob({
+            id,
+            accountId: accountId,
+            boardName: boardName,
+            keywords: finalKeywords,
+            count,
+            status: 'pending'
+          });
+          created++;
+        }
       }
-      onShowToast(`Created ${selectedBoardNames.length} Auto-Repin jobs!`, 'success');
+      onShowToast(`Created ${created} Auto-Repin jobs across ${selectedAccountIds.length} accounts!`, 'success');
       setSelectedBoardNames([]);
       setKeywords('');
       setCount(5);
@@ -123,15 +154,31 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
           <Card title="New Repin Task" subtitle="Setup search keywords">
             <div className="flex flex-col gap-4 text-sm mt-2">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] uppercase font-black text-slate-400">Account</label>
-                <select 
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-                  value={selectedAccountId}
-                  onChange={e => setSelectedAccountId(e.target.value)}
-                >
-                  <option value="">-- Select Account --</option>
-                  {accounts.map(a => <option key={a.id} value={a.id}>{a.nickname}</option>)}
-                </select>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-black text-slate-400">Target Accounts</label>
+                  <button 
+                    className="text-[10px] text-blue-400 hover:text-blue-300"
+                    onClick={() => setSelectedAccountIds(selectedAccountIds.length === accounts.length ? [] : accounts.map(a => a.id))}
+                  >
+                    Select All
+                  </button>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl max-h-32 overflow-y-auto p-2 flex flex-col gap-1">
+                  {accounts.map(a => (
+                    <label key={a.id} className="flex items-center gap-2 text-sm text-slate-300 hover:bg-slate-900 p-2 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="accent-pinterest-red w-4 h-4"
+                        checked={selectedAccountIds.includes(a.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedAccountIds(prev => [...prev, a.id]);
+                          else setSelectedAccountIds(prev => prev.filter(id => id !== a.id));
+                        }}
+                      />
+                      <span className="truncate">{a.nickname}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -225,7 +272,33 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
         </div>
 
         {/* Right Column: Job List */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 flex flex-col gap-6">
+          <Card title="Auto-Pilot Fleet Engine" className="border-slate-800 bg-gradient-to-r from-slate-900 to-slate-950">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                  <Repeat className="w-5 h-5 text-blue-400" />
+                  Fleet Auto-Pilot
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">When enabled, the system will automatically process all pending jobs invisibly in the background, pausing between jobs to protect your accounts from rate limits.</p>
+              </div>
+              <button
+                onClick={handleToggleAutoPilot}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-300 focus:outline-none ${autoPilotEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
+              >
+                <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform duration-300 ${autoPilotEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {autoPilotEnabled && fleetLogs.length > 0 && (
+              <div className="mt-4 bg-slate-950 rounded-lg p-3 border border-slate-800">
+                <p className="text-[10px] uppercase font-bold text-slate-500 mb-2">Engine Logs</p>
+                {fleetLogs.map((log, i) => (
+                  <div key={i} className={`text-xs ${i === 0 ? 'text-emerald-400' : 'text-slate-500'} truncate`}>{log}</div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Card title="Repin Queue" subtitle="Manage and track automation tasks">
             <div className="flex flex-col gap-3">
               {jobs.length === 0 && !loading && (
@@ -247,6 +320,22 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
                       <span className="text-xs text-slate-500">
                         {account?.nickname || 'Unknown'} → {job.boardName}
                       </span>
+                      
+                      {job.liveLinks && job.liveLinks.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {job.liveLinks.map((link: string, i: number) => (
+                            <a 
+                              key={i} 
+                              href={link} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/20"
+                            >
+                              View Pin {i + 1} ↗
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       
                       {job.errorMessage && (
                         <span className="text-[10px] text-red-400 mt-1">{job.errorMessage}</span>

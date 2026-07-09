@@ -8,6 +8,7 @@ interface DatabaseState {
   queue_jobs: any[];
   settings: any[];
   logs: any[];
+  repin_jobs: any[];
 }
 
 export class JsonDriver implements DbDriver {
@@ -28,6 +29,7 @@ export class JsonDriver implements DbDriver {
         this.state.queue_jobs = this.state.queue_jobs || [];
         this.state.settings = this.state.settings || [];
         this.state.logs = this.state.logs || [];
+        this.state.repin_jobs = this.state.repin_jobs || [];
         
         // Recover log auto id
         if (this.state.logs.length > 0) {
@@ -51,7 +53,8 @@ export class JsonDriver implements DbDriver {
       drafts: [],
       queue_jobs: [],
       settings: [],
-      logs: []
+      logs: [],
+      repin_jobs: []
     };
   }
 
@@ -130,6 +133,19 @@ export class JsonDriver implements DbDriver {
         settings = settings.filter(s => s.key === key);
       }
       return settings as T[];
+    }
+
+    // Repin Jobs
+    if (cleanSql.includes('select * from repin_jobs')) {
+      let repin_jobs = [...this.state.repin_jobs];
+      if (cleanSql.includes('where id = ?')) {
+        const id = params[0];
+        repin_jobs = repin_jobs.filter(r => r.id === id);
+      }
+      if (cleanSql.includes('order by createdat asc')) {
+        repin_jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }
+      return repin_jobs as T[];
     }
 
     // PRAGMA queries (used by SQLite migrations — return empty for JSON driver, migrations are no-ops)
@@ -311,6 +327,34 @@ export class JsonDriver implements DbDriver {
       this.state.queue_jobs = this.state.queue_jobs.filter(q => q.status === 'running');
       this.saveState();
       return { lastID: null, changes: origLen - this.state.queue_jobs.length };
+    }
+
+    // Repin Jobs operations
+    if (lowerSql.startsWith('insert into repin_jobs')) {
+      const [id, accountId, boardName, keywords, count, status, errorMessage, createdAt, startedAt, completedAt] = params;
+      this.state.repin_jobs.push({ id, accountId, boardName, keywords, count, status, errorMessage: errorMessage || null, createdAt, startedAt: startedAt || null, completedAt: completedAt || null });
+      this.saveState();
+      return { lastID: id, changes: 1 };
+    }
+
+    if (lowerSql.startsWith('update repin_jobs set')) {
+      const id = params[params.length - 1];
+      const [accountId, boardName, keywords, count, status, errorMessage, startedAt, completedAt] = params;
+      const idx = this.state.repin_jobs.findIndex(r => r.id === id);
+      if (idx !== -1) {
+        this.state.repin_jobs[idx] = { ...this.state.repin_jobs[idx], accountId, boardName, keywords, count, status, errorMessage: errorMessage || null, startedAt: startedAt || null, completedAt: completedAt || null };
+        this.saveState();
+        return { lastID: id, changes: 1 };
+      }
+      return { lastID: null, changes: 0 };
+    }
+
+    if (lowerSql.startsWith('delete from repin_jobs where id = ?')) {
+      const id = params[0];
+      const origLen = this.state.repin_jobs.length;
+      this.state.repin_jobs = this.state.repin_jobs.filter(r => r.id !== id);
+      this.saveState();
+      return { lastID: null, changes: origLen - this.state.repin_jobs.length };
     }
 
     // ALTER TABLE (no-op for JSON driver — schema is schemaless)

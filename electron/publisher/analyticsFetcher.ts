@@ -25,7 +25,7 @@ export class AnalyticsFetcher {
       headless: false, // Must be false per AGENTS.md rules to prevent silent crash
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu', '--window-position=-32000,-32000']
     };
 
     let context: BrowserContext | null = null;

@@ -1,6 +1,6 @@
 {
   "name": "pinterest-pin-publisher",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Safe, user-controlled Pinterest publishing assistant for Windows desktop.",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -21,6 +21,7 @@
   "author": "Pinterest Pin Publisher",
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.5.18",
     "jimp": "^0.22.12",
     "lucide-react": "^0.395.0",
     "playwright": "^1.44.1",
@@ -29,6 +30,7 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^20.14.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

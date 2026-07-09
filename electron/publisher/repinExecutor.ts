@@ -15,6 +15,7 @@ export interface RepinJob {
   count: number;
   status: 'pending' | 'running' | 'completed' | 'failed';
   errorMessage?: string;
+  liveLinks?: string[];
   startedAt?: string;
   completedAt?: string;
   createdAt: string;
@@ -34,7 +35,13 @@ export class RepinExecutor {
       headless: false,
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--start-maximized', '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
+      args: [
+        '--start-maximized', 
+        '--disable-blink-features=AutomationControlled', 
+        '--no-sandbox', 
+        '--disable-gpu',
+        '--window-position=-32000,-32000' // Push off-screen to act as headless
+      ]
     };
 
     let context: BrowserContext | null = null;
@@ -74,6 +81,7 @@ export class RepinExecutor {
       
       let savedCount = 0;
       let attempt = 0;
+      const liveLinks: string[] = [];
       
       while (savedCount < job.count && attempt < job.count * 3) {
         attempt++;
@@ -119,9 +127,10 @@ export class RepinExecutor {
             // 3. Click Save next to the board
             const saveBtn = page.locator(`[data-test-id="board-row-${job.boardName}"] button`).first();
             if (await saveBtn.isVisible()) {
-              await saveBtn.click();
+                await saveBtn.click();
               await page.waitForTimeout(2000);
               savedCount++;
+              liveLinks.push(page.url());
             } else {
               throw new Error(`Board "${job.boardName}" not found in dropdown.`);
             }
@@ -131,6 +140,7 @@ export class RepinExecutor {
             if (await primarySave.isVisible()) {
               await primarySave.click();
               savedCount++;
+              liveLinks.push(page.url());
               await page.waitForTimeout(2000);
             }
           }
@@ -144,6 +154,10 @@ export class RepinExecutor {
       }
       
       onProgress(`Successfully saved ${savedCount}/${job.count} pins.`);
+      
+      // Update job with the live links
+      job.liveLinks = liveLinks;
+      await db.saveRepinJob(job);
       
     } catch (err: any) {
       console.error(`Failed repin job: ${err.message}`);

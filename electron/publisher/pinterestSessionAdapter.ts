@@ -342,20 +342,27 @@ export class PinterestSessionAdapter {
       
       // Navigate to login page
       await page.goto('https://www.pinterest.com/login/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-      await new Promise(r => setTimeout(r, 2500));
-
-      // Fill email
-      const emailSelectors = ['input[type="email"]', 'input#email', 'input[name="id"]', 'input#email-address'];
+      
+      // Wait for any of the email input fields to appear
+      const emailSelectors = [
+        'input[type="email"]', 'input#email', 'input[name="id"]', 'input#email-address', 
+        'input[placeholder*="Email"]', 'input[placeholder*="email"]'
+      ];
+      
       let emailFilled = false;
-      for (const sel of emailSelectors) {
-        if (await page.locator(sel).first().isVisible().catch(() => false)) {
-          await page.locator(sel).first().click();
-          await page.keyboard.press('Control+A');
-          await page.keyboard.press('Backspace');
-          await page.locator(sel).first().fill(email);
-          emailFilled = true;
-          break;
+      for (let i = 0; i < 15; i++) { // Wait up to 15 seconds
+        for (const sel of emailSelectors) {
+          if (await page.locator(sel).first().isVisible().catch(() => false)) {
+            await page.locator(sel).first().click();
+            await page.keyboard.press('Control+A');
+            await page.keyboard.press('Backspace');
+            await page.locator(sel).first().fill(email);
+            emailFilled = true;
+            break;
+          }
         }
+        if (emailFilled) break;
+        await new Promise(r => setTimeout(r, 1000));
       }
 
       if (!emailFilled) {
@@ -363,7 +370,7 @@ export class PinterestSessionAdapter {
       }
 
       // Fill password
-      const passSelectors = ['input[type="password"]', 'input#password', 'input[name="password"]'];
+      const passSelectors = ['input[type="password"]', 'input#password', 'input[name="password"]', 'input[placeholder*="Password"]', 'input[placeholder*="password"]'];
       let passFilled = false;
       for (const sel of passSelectors) {
         if (await page.locator(sel).first().isVisible().catch(() => false)) {

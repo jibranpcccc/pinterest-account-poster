@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, clipboard, dialog } from 'electron';
+import AdmZip from 'adm-zip';
 import * as path from 'path';
 import * as fs from 'fs';
 import { DbManager } from './database/db';
@@ -248,6 +249,19 @@ function registerIpcHandlers() {
     return db.deleteAccount(id);
   });
 
+  ipcMain.handle('fleet:toggle', async (_, enabled: boolean) => {
+    isFleetAutoPilotEnabled = enabled;
+    if (fleetTimeout) clearTimeout(fleetTimeout);
+    if (enabled && !isFleetCurrentlyRunningAJob) {
+      runFleetEngine(); // Start loop
+    }
+    return isFleetAutoPilotEnabled;
+  });
+
+  ipcMain.handle('fleet:status', async () => {
+    return isFleetAutoPilotEnabled;
+  });
+
   ipcMain.handle('pinterest:openSession', async (_, accountId: string) => {
     const accounts = await db.query<Account>('SELECT * FROM accounts WHERE id = ?', [accountId]);
     if (accounts.length === 0) throw new Error('Account not found');
@@ -266,6 +280,14 @@ function registerIpcHandlers() {
       sessionStatus: isConnected ? 'connected' : 'disconnected',
       lastUsedAt: new Date().toISOString()
     });
+    
+    // Auto-fetch boards in the background if connected, so user doesn't miss newly added boards
+    if (isConnected) {
+      pub.getBoardResolver().fetchBoards(accounts[0]).catch(e => {
+        console.error(`Background board fetch failed for ${accounts[0].nickname}:`, e);
+      });
+    }
+    
     return isConnected;
   });
 
@@ -513,6 +535,49 @@ function registerIpcHandlers() {
   // System handlers
   ipcMain.handle('sys:openLogFolder', async () => {
     await shell.openPath(localDataDir);
+  });
+
+  ipcMain.handle('sys:exportBackup', async () => {
+    if (!mainWindow) return false;
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Footprints & Data',
+      defaultPath: `PinPublisher_Backup_${new Date().toISOString().split('T')[0]}.zip`,
+      filters: [{ name: 'Zip Files', extensions: ['zip'] }]
+    });
+    if (canceled || !filePath) return false;
+
+    try {
+      const zip = new AdmZip();
+      zip.addLocalFolder(localDataDir);
+      zip.writeZip(filePath);
+      return true;
+    } catch (e: any) {
+      console.error('Export failed:', e);
+      throw new Error(`Export failed: ${e.message}`);
+    }
+  });
+
+  ipcMain.handle('sys:importBackup', async () => {
+    if (!mainWindow) return false;
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Footprints & Data',
+      filters: [{ name: 'Zip Files', extensions: ['zip'] }],
+      properties: ['openFile']
+    });
+    
+    if (canceled || filePaths.length === 0) return false;
+    
+    try {
+      const zip = new AdmZip(filePaths[0]);
+      zip.extractAllTo(localDataDir, true);
+      
+      app.relaunch();
+      app.exit(0);
+      return true;
+    } catch (e: any) {
+      console.error('Import failed:', e);
+      throw new Error(`Import failed: ${e.message}`);
+    }
   });
 
   ipcMain.handle('clipboard:write', async (_, text: string) => {

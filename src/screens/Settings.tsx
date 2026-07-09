@@ -457,6 +457,54 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           </Card>
 
+          {/* Data & Backups */}
+          <Card title="Data & Backups" subtitle="Manage your footprints and data" className="border-slate-800">
+            <div className="flex flex-col gap-4 text-xs">
+              <div className="flex flex-col gap-3">
+                <Button 
+                  variant="secondary" 
+                  icon={<FolderOpen className="w-4 h-4" />}
+                  onClick={async () => {
+                    try {
+                      const success = await api.exportBackup();
+                      if (success) onShowToast('Export completed successfully!', 'success');
+                    } catch (e: any) {
+                      onShowToast(`Export failed: ${e.message}`, 'error');
+                    }
+                  }}
+                  className="w-full justify-center"
+                >
+                  Export Footprints & Data
+                </Button>
+                <p className="text-[11px] text-slate-500 leading-normal text-center">
+                  Save all accounts, databases, and browser profiles into a ZIP file.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-850 pt-4">
+                <Button 
+                  variant="primary" 
+                  icon={<RefreshCw className="w-4 h-4" />}
+                  onClick={async () => {
+                    if (window.confirm('Importing will overwrite your current data and restart the app. Continue?')) {
+                      try {
+                        await api.importBackup();
+                      } catch (e: any) {
+                        onShowToast(`Import failed: ${e.message}`, 'error');
+                      }
+                    }
+                  }}
+                  className="w-full justify-center bg-pinterest-red text-white"
+                >
+                  Import Footprints & Data
+                </Button>
+                <p className="text-[11px] text-slate-500 leading-normal text-center">
+                  Restore data from a ZIP backup. The app will restart automatically.
+                </p>
+              </div>
+            </div>
+          </Card>
+
           {/* Compliance and Terms */}
           <Card title="Compliance & Safety Notice" subtitle="Please read carefully">
             <div className="flex flex-col gap-3 text-xs text-slate-400 leading-normal">

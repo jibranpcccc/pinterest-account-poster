@@ -49,10 +49,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openLogFolder: () => ipcRenderer.invoke('sys:openLogFolder'),
 
   // System
+  exportBackup: () => ipcRenderer.invoke('sys:exportBackup'),
+  importBackup: () => ipcRenderer.invoke('sys:importBackup'),
   writeToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
 
   // AI Provider
-  callAI: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
+  aiCall: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
+  toggleFleet: (enabled: boolean) => ipcRenderer.invoke('fleet:toggle', enabled),
+  getFleetStatus: () => ipcRenderer.invoke('fleet:status'),
+  onFleetLog: (callback: (msg: string) => void) => {
+    const handler = (_: any, msg: string) => callback(msg);
+    ipcRenderer.on('fleet:log', handler);
+    return () => ipcRenderer.removeListener('fleet:log', handler);
+  },
+  onFleetJobUpdate: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('fleet:jobUpdate', handler);
+    return () => ipcRenderer.removeListener('fleet:jobUpdate', handler);
+  },
 
   // Listeners
   onQueueProgress: (callback: (event: any, data: any) => void) => {

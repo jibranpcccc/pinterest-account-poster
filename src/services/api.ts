@@ -41,6 +41,12 @@ declare global {
       getLogs: (filters?: LogFilters) => Promise<Log[]>;
       clearLogs: () => Promise<void>;
       openLogFolder: () => Promise<void>;
+      exportBackup: () => Promise<string>;
+      importBackup: (zipPath: string) => Promise<boolean>;
+      toggleFleet: (enabled: boolean) => Promise<boolean>;
+      getFleetStatus: () => Promise<boolean>;
+      onFleetLog: (cb: (msg: string) => void) => () => void;
+      onFleetJobUpdate: (cb: () => void) => () => void;
 
       callAI: (action: string, payload: any) => Promise<any>;
 
@@ -296,6 +302,14 @@ const getApiMethod = (methodName: string) => {
       },
       openLogFolder: async () => {
         console.log('Mock: Open log folder requested');
+      },
+      exportBackup: async () => {
+        console.log('Mock: Export backup requested');
+        return true;
+      },
+      importBackup: async () => {
+        console.log('Mock: Import backup requested');
+        return true;
       },
       callAI: async (action: string, payload: any) => {
         console.log('Mock AI call:', action, payload);
