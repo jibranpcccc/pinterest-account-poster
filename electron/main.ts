@@ -10,6 +10,64 @@ import { AnalyticsFetcher } from './publisher/analyticsFetcher';
 import { RepinExecutor } from './publisher/repinExecutor';
 import { Account, Board, Draft, QueueJob } from './types';
 
+// ===== Auto-Pilot Fleet Engine State =====
+let isFleetAutoPilotEnabled = false;
+let isFleetCurrentlyRunningAJob = false;
+let fleetTimeout: NodeJS.Timeout | null = null;
+
+async function runFleetEngine() {
+  if (!isFleetAutoPilotEnabled || isFleetCurrentlyRunningAJob) return;
+  if (!dbManager) return;
+
+  try {
+    const pendingJobs = await dbManager.query<any>("SELECT * FROM repin_jobs WHERE status = 'pending' ORDER BY createdAt ASC LIMIT 1");
+    if (pendingJobs.length > 0) {
+      isFleetCurrentlyRunningAJob = true;
+      const job = pendingJobs[0];
+      
+      const accounts = await dbManager.query<Account>("SELECT * FROM accounts WHERE id = ?", [job.accountId]);
+      if (accounts.length > 0) {
+        const executor = new RepinExecutor();
+        
+        // Notify UI about fleet activity
+        mainWindow?.webContents.send('fleet:log', `[FLEET] Starting Auto-Repin job for ${accounts[0].nickname} -> ${job.boardName}`);
+        
+        await dbManager.saveRepinJob({ ...job, status: 'running', startedAt: new Date().toISOString() });
+        
+        try {
+          await executor.executeRepinJob(job, accounts[0].profilePath, dbManager, async (msg) => {
+            mainWindow?.webContents.send('fleet:log', `[FLEET - ${accounts[0].nickname}] ${msg}`);
+          });
+          await dbManager.saveRepinJob({ ...job, status: 'completed', completedAt: new Date().toISOString() });
+          mainWindow?.webContents.send('fleet:log', `[FLEET] Job completed successfully.`);
+        } catch (err: any) {
+          await dbManager.saveRepinJob({ ...job, status: 'failed', errorMessage: err.message, completedAt: new Date().toISOString() });
+          mainWindow?.webContents.send('fleet:log', `[FLEET] Job failed: ${err.message}`);
+        }
+      } else {
+        await dbManager.saveRepinJob({ ...job, status: 'failed', errorMessage: 'Account not found', completedAt: new Date().toISOString() });
+      }
+      isFleetCurrentlyRunningAJob = false;
+      
+      if (isFleetAutoPilotEnabled) {
+        // Random 2-5 min cooldown between jobs
+        const cooldownMs = Math.floor(Math.random() * (300000 - 120000 + 1) + 120000);
+        mainWindow?.webContents.send('fleet:log', `[FLEET] Cooling down for ${Math.round(cooldownMs/1000)}s to prevent rate limits...`);
+        fleetTimeout = setTimeout(() => runFleetEngine(), cooldownMs);
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("Fleet engine error:", err);
+    isFleetCurrentlyRunningAJob = false;
+  }
+  
+  if (isFleetAutoPilotEnabled) {
+    fleetTimeout = setTimeout(() => runFleetEngine(), 30000); // Check for new jobs every 30s
+  }
+}
+// =========================================
+
 let mainWindow: BrowserWindow | null = null;
 let dbManager: DbManager | null = null;
 let publisherAdapter: PublisherAdapter | null = null;
