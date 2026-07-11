@@ -119,8 +119,9 @@ const getApiMethod = (methodName: string) => {
     // Check dynamically if window.electronAPI is defined (Production Mode)
     if (typeof window !== 'undefined' && window.electronAPI) {
       const apiObj = window.electronAPI as any;
-      if (typeof apiObj[methodName] === 'function') {
-        return apiObj[methodName](...args);
+      const actualName = methodName === 'callAI' ? 'aiCall' : methodName;
+      if (typeof apiObj[actualName] === 'function') {
+        return apiObj[actualName](...args);
       }
     }
 
