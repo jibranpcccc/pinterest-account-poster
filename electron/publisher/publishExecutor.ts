@@ -179,6 +179,7 @@ export class PublishExecutor {
       await this.activeContext.addInitScript(injectionScript);
     } catch (err: any) {
       await this.db.addLog('error', `Failed to launch publishing browser: ${err.message}`, { jobId: job.id });
+      browserLockManager.releaseLock();
       throw err;
     }
 

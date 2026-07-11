@@ -12,8 +12,14 @@ class BrowserLockManager {
    */
   public acquireLock(accountId: string, taskName: string): void {
     if (this.activeAccountId !== null) {
-      const minutesLocked = Math.floor((Date.now() - (this.lockTimestamp || 0)) / 60000);
-      throw new Error(`BROWSER_LOCKED: The browser is currently busy with [${this.activeTaskName}] for another account. Please wait or stop the current task before starting a new one. (Locked for ${minutesLocked}m)`);
+      const elapsedMs = Date.now() - (this.lockTimestamp || 0);
+      const minutesLocked = Math.floor(elapsedMs / 60000);
+      if (elapsedMs > 480000) { // 8 minutes force break
+        console.warn(`⚠️ [BrowserLockManager] FORCE BREAKING STUCK LOCK: task [${this.activeTaskName}] held lock for ${minutesLocked}m. Releasing.`);
+        this.releaseLock();
+      } else {
+        throw new Error(`BROWSER_LOCKED: The browser is currently busy with [${this.activeTaskName}] for another account. Please wait or stop the current task before starting a new one. (Locked for ${minutesLocked}m)`);
+      }
     }
 
     this.activeAccountId = accountId;
