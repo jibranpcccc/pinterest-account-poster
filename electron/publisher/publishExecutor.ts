@@ -157,6 +157,11 @@ export class PublishExecutor {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
     console.log(`[Fingerprint] Applying: ${FingerprintManager.getSummary(fingerprint)}`);
 
+    // Strict user rule: Never post without title/description
+    if (!job.title || !job.description || job.title.trim().length < 3 || job.description.trim().length < 5) {
+        throw new Error("Skipped: Job is missing a generated Title or Description. Strict AI validation enforced.");
+    }
+
     // Run visible so the user can see if Pinterest blocks the action or asks for a captcha
     const launchOptions: any = {
       headless: false,
