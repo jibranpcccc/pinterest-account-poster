@@ -1,6 +1,6 @@
 {
   "name": "pinterest-pin-publisher",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "Automated Pinterest Pin Publishing System",
   "main": "dist-electron/main.js",
   "scripts": {
