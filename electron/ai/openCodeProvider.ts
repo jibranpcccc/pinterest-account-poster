@@ -859,7 +859,7 @@ Return ONLY raw JSON:
           accountId = sel.accountId;
           baseUrl   = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
         }
-        if (!model || model === 'opencode-big-pickle') model = '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'; // Benchmarked: top-tier search titles & SEO quality
+        if (!model || model === 'opencode-big-pickle') model = '@cf/mistralai/mistral-small-3.1-24b-instruct'; // Benchmarked winner for SEO and speed
       }
 
       if (!apiKey) throw new Error('API key is missing. Please configure your AI API key in Settings.');
@@ -947,6 +947,12 @@ Return ONLY raw JSON:
 
     if (hasPrompt) {
       console.log(`[analyzeImage] Prompt mode — skipping Stage 1 vision. Prompt: "${cleanPrompt.slice(0, 80)}..."`);
+    }
+
+    const config = await this.getClientConfig();
+    let model = config.model;
+    if (!model || model === 'opencode-big-pickle') {
+      model = '@cf/mistralai/mistral-small-3.1-24b-instruct'; // Default to benchmarked SEO winner
     }
 
     const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
@@ -1224,6 +1230,7 @@ Transform the BOARD NAME into the most natural Pinterest search keyword (suggest
 BoardFit check: does the hairstyle match the board? strong/partial/weak/mismatch. Set shouldPost=false if mismatch.
 
 STRICT RULES FOR ANALYSIS:
+- EVEN IF THERE IS A MISMATCH (shouldPost is false), you MUST still generate a complete, valid, high-quality title, description, and alt text describing the image content. Do not leave fields empty.
 - Use the provided prompt/visual data as the ONLY truth source.
 - Do not invent hairstyles, colors, accessories, extensions, beads, cuffs, outfit details, background details, age, or styling features unless clearly mentioned.
 - Do not keyword-stuff.
@@ -1236,24 +1243,26 @@ INCLUSIVE & ETHICAL LANGUAGE:
 - Only mention ethnicity or race (e.g., Black, White, Asian, Latin) if clearly implied or stated. Capitalize "Black" when referring to people.
 - Never identify or speculate about a real person's identity. Avoid health, race, religion, political or sensitive inferences unless explicit.
 
-TITLE (45–85 characters):
+TITLE (55–80 characters):
 - Natural Pinterest search query, not a sentence. Use Title Case (clean title case).
+- Write between 55 and 80 characters to ensure it meets minimum length rules.
 - CRITICAL: Front-load the strongest keyword in the first 30 characters when possible.
 - Include the hairstyle name clearly.
-- NO emojis, NO hashtags, NO pipe symbols ("|"), NO "+", NO clickbait.
+- STRICTLY FORBIDDEN IN TITLES: pipe symbols ("|"), plus symbols ("+"), emojis, and hashtags. Any title containing these characters is invalid.
 - Make the title natural, searchable, and human-written. Ensure variety if doing multiple prompts.
 
-DESCRIPTION (220–380 characters):
-- MUST be strictly between 220 and 380 characters (final written length must be within this range).
-- MUST end with a complete sentence and must not be cut off.
-- Start naturally with the hairstyle name or a natural keyword. Avoid canned openings like "Discover," "Achieve," "Get inspired," "Check out" repeatedly.
+DESCRIPTION (260–360 characters):
+- MUST be strictly between 260 and 360 characters (final written length must be within this range to prevent being too short).
+- MUST be exactly 3 to 4 sentences in total and must end with a complete sentence.
+- NEVER start the description with the following forbidden words: "Discover", "Achieve", "Get inspired", "Check out", or "Looking for". Start directly with the hairstyle name or a natural keyword.
+- Emojis and hashtags are strictly prohibited in the description. Do not output them.
 - Describe exactly what the prompt shows. Do not use incorrect category terms.
 - Include 2-4 useful relevant SEO terms naturally (e.g., natural hair, protective style, sleek edges, cornrows, curls, ponytail, bun, braids, short hair, long hair, wigs, fade, waves, coily, straight hair, kids hairstyles, men's hairstyles, easy hairstyle, salon-ready).
-- Do not use hashtags or emojis.
 - Include ONE soft Call-to-Action (CTA) at the end. Example variations to use: "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Tap the link for step-by-step styling tips.", "Save this style for your next protective hairstyle.", "Reference this before your next barber or stylist visit."
 
-ALT TEXT (12–22 words):
+ALT TEXT (15–22 words):
 - Simple, literal visual sentence describing the visible hairstyle simply and accessibly.
+- MUST contain between 15 and 22 words (do not write shorter than 15 words). To meet this length, describe the texture, color, cut, and background setting explicitly.
 - Include the main hairstyle keyword once if natural.
 - No hashtags, no CTA, no promotional words, no emojis, no grammar mistakes.
 - If gender or ethnicity is clear (e.g., "Black woman," "Asian man," "young girl"), mention it naturally. If not specified, use neutral phrasing (e.g., "person with short curly hair").
@@ -1265,7 +1274,7 @@ Return ONLY raw JSON matching this schema:
     try {
       const seoRaw = await raceCloudflare(
         (cred) => ({
-          url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
+          url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
           body: { messages: [{ role: 'user', content: seoPrompt }], temperature: 0.7, max_tokens: 2500 }
         }),
         45000  // 45s — reasoning models take 10-15s typically
@@ -1330,7 +1339,7 @@ Return ONLY raw JSON:
         try {
           const retryRaw = await raceCloudflare(
             (cred) => ({
-              url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
+              url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
               body: { messages: [{ role: 'user', content: retryPrompt }], temperature: 0.8, max_tokens: 2500 }
             }),
             45000

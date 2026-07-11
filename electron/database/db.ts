@@ -269,7 +269,7 @@ export class DbManager {
       { key: 'aiProvider', value: JSON.stringify('opencode') },
       { key: 'aiBaseUrl', value: JSON.stringify('https://api.opencode.dev/v1') },
       { key: 'aiApiKey', value: JSON.stringify('') },
-      { key: 'aiModel', value: JSON.stringify('opencode-big-pickle') },
+      { key: 'aiModel', value: JSON.stringify('@cf/mistralai/mistral-small-3.1-24b-instruct') },
       { key: 'aiTimeout', value: JSON.stringify(30) }
     ];
 
