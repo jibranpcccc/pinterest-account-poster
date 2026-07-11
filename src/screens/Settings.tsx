@@ -27,12 +27,13 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isTestingAI, setIsTestingAI] = useState(false);
 
   // Settings local states
-  const [actionDelayMin, setActionDelayMin] = useState(1.5);
-  const [actionDelayMax, setActionDelayMax] = useState(4.0);
-  const [pinDelayMin, setPinDelayMin] = useState(30);
-  const [pinDelayMax, setPinDelayMax] = useState(45);
-  const [accountDelayMin, setAccountDelayMin] = useState(30);
-  const [accountDelayMax, setAccountDelayMax] = useState(180);
+  // Settings local states - adjusted for fast default execution (under 1 minute per pin)
+  const [actionDelayMin, setActionDelayMin] = useState(0.5);
+  const [actionDelayMax, setActionDelayMax] = useState(1.2);
+  const [pinDelayMin, setPinDelayMin] = useState(10);
+  const [pinDelayMax, setPinDelayMax] = useState(20);
+  const [accountDelayMin, setAccountDelayMin] = useState(15);
+  const [accountDelayMax, setAccountDelayMax] = useState(30);
   const [maxRetries, setMaxRetries] = useState(2);
   const [screenshotOnError, setScreenshotOnError] = useState(true);
   const [continueAfterFailure, setContinueAfterFailure] = useState(false);
