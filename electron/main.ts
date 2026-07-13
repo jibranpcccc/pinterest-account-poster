@@ -663,4 +663,54 @@ function registerIpcHandlers() {
         throw new Error(`Unknown AI action: ${action}`);
     }
   });
+
+  // ── Diagnostic: test Cloudflare accounts loading & speed ─────────────────
+  ipcMain.handle('ai:diagnose', async () => {
+    const path = require('path');
+    const fs   = require('fs');
+    const { app: eApp } = require('electron');
+
+    const searchPaths = [
+      process.resourcesPath ? path.join(process.resourcesPath, 'cloudflare_accounts.txt') : null,
+      path.join(eApp.getPath('userData'), 'cloudflare_accounts.txt'),
+      path.join(__dirname, '..', '..', 'cloudflare_accounts.txt'),
+      path.join(__dirname, '..', '..', 'cloudflare_working_accounts.txt'),
+      path.join(process.cwd(), 'cloudflare_accounts.txt'),
+    ].filter(Boolean) as string[];
+
+    const foundPath = searchPaths.find(p => fs.existsSync(p)) || null;
+    let accountCount = 0;
+    if (foundPath) {
+      const lines = fs.readFileSync(foundPath, 'utf8').split('\n');
+      accountCount = lines.filter((l: string) => l.includes('cfut_')).length;
+    }
+
+    // Quick speed test: ping 3 accounts and measure fastest response
+    let speedMs = -1;
+    try {
+      const pool = await ai.syncCloudflareKeysPool();
+      const testCreds = pool.slice(0, 3);
+      const model = '@cf/moonshotai/kimi-k2.6';
+      const t0 = Date.now();
+      await Promise.any(testCreds.map(cred =>
+        fetch(`https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cred.token}` },
+          body: JSON.stringify({ messages: [{ role: 'user', content: 'Say: OK' }], max_tokens: 5 }),
+          signal: AbortSignal.timeout(30000)
+        }).then(async r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      ));
+      speedMs = Date.now() - t0;
+    } catch {}
+
+    return {
+      resourcesPath:  process.resourcesPath || 'N/A',
+      foundPath:      foundPath || 'NOT FOUND',
+      accountCount,
+      searchPaths,
+      speedMs,
+      platform:       process.platform,
+      version:        eApp.getVersion(),
+    };
+  });
 }

@@ -25,6 +25,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingAI, setIsTestingAI] = useState(false);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
 
   // Settings local states
   // Settings local states - adjusted for fast default execution (under 1 minute per pin)
@@ -455,6 +457,51 @@ export const Settings: React.FC<SettingsProps> = ({
                   Test Connection
                 </Button>
               )}
+
+              {/* Cloudflare Diagnostics — always visible so any user can debug */}
+              <div className="border-t border-slate-800 pt-4 flex flex-col gap-3 mt-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Cpu className="w-3.5 h-3.5 text-blue-400" />}
+                  onClick={async () => {
+                    setIsDiagnosing(true);
+                    setDiagResult(null);
+                    try {
+                      const result = await (window as any).api.aiDiagnose();
+                      setDiagResult(result);
+                    } catch (e: any) {
+                      setDiagResult({ error: e.message });
+                    } finally {
+                      setIsDiagnosing(false);
+                    }
+                  }}
+                  loading={isDiagnosing}
+                  className="w-full justify-center py-2"
+                >
+                  🔍 Run AI Diagnostics
+                </Button>
+
+                {diagResult && (
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] font-mono text-slate-300 flex flex-col gap-1.5">
+                    {diagResult.error ? (
+                      <span className="text-red-400">❌ Error: {diagResult.error}</span>
+                    ) : (
+                      <>
+                        <div className={`font-bold text-sm ${ diagResult.accountCount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {diagResult.accountCount > 0 ? `✅ ${diagResult.accountCount} Cloudflare accounts loaded` : '❌ 0 accounts — AI will be SLOW'}
+                        </div>
+                        <div className="text-slate-400">📁 File: <span className="text-slate-200 break-all">{diagResult.foundPath}</span></div>
+                        <div className="text-slate-400">📂 Resources: <span className="text-slate-200 break-all">{diagResult.resourcesPath}</span></div>
+                        <div className={`text-slate-400`}>⚡ Speed: <span className={diagResult.speedMs > 0 ? (diagResult.speedMs < 15000 ? 'text-green-400' : 'text-yellow-400') : 'text-red-400'}>
+                          {diagResult.speedMs > 0 ? `${diagResult.speedMs}ms (${diagResult.speedMs < 15000 ? 'FAST ✅' : 'SLOW ⚠️'})` : 'Test failed ❌'}
+                        </span></div>
+                        <div className="text-slate-400">🔖 Version: <span className="text-slate-200">{diagResult.version}</span></div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
 

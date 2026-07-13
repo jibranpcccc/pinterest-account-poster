@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // AI Provider
   aiCall: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
+  aiDiagnose: () => ipcRenderer.invoke('ai:diagnose'),
   toggleFleet: (enabled: boolean) => ipcRenderer.invoke('fleet:toggle', enabled),
   getFleetStatus: () => ipcRenderer.invoke('fleet:status'),
   onFleetLog: (callback: (msg: string) => void) => {
