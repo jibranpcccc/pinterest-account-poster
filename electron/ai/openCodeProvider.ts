@@ -1069,54 +1069,36 @@ Return ONLY raw JSON:
       } catch (e) { clearTimeout(tid); throw e; }
     };
 
-    // Optimized Cloudflare racing: tries 1 round-robin account first (saving CPU/API quota), 
-    // and falls back to racing 5 accounts in parallel if that fails.
+    // FAST PARALLEL RACING: picks 5 unique accounts via round-robin and races them simultaneously.
+    // With 86 accounts, 5 concurrent image requests each get a DIFFERENT set of 5 accounts,
+    // meaning zero overlap and no rate-limit conflicts between simultaneous bulk jobs.
+    const RACE_SIZE = 5;
     const raceCloudflare = async (
       buildRequest: (cred: { accountId: string; token: string }) => { url: string; body: any },
-      _hardTimeoutMs: number  // kept for API compat, individual timeout is 30s
+      _hardTimeoutMs: number  // kept for API compat
     ): Promise<string> => {
       if (workingPool.length === 0) throw new Error('No Cloudflare accounts available.');
 
-      // Try 1 account round-robin first to prevent concurrent bulk rate-limits
-      const firstCred = pickCredsRoundRobin(1);
-      if (firstCred.length > 0) {
-        try {
-          const result = await makeAttempt(firstCred[0], buildRequest(firstCred[0]));
-          return result;
-        } catch (err: any) {
-          console.warn(`[CF Race] First single attempt failed: ${err.message}. Falling back to parallel racing...`);
-        }
-      }
-
-      // Fallback: Race 5 simultaneously for maximum reliability if first attempt fails
-      const RACE_SIZE = Math.min(5, workingPool.length);
-      const remainingPool = workingPool.filter(c => !firstCred.some(fc => fc.token === c.token));
-      const maxWaves = Math.ceil(remainingPool.length / RACE_SIZE);
-      
+      const maxWaves = Math.ceil(workingPool.length / RACE_SIZE);
       for (let wave = 0; wave < maxWaves; wave++) {
-        // Pick unique credentials from the remaining pool
-        const creds = [];
-        const poolLen = remainingPool.length;
-        if (poolLen > 0) {
-          for (let i = 0; i < RACE_SIZE && i < poolLen; i++) {
-            creds.push(remainingPool[(_globalCfRoundRobinIndex + i) % poolLen]);
-          }
-          _globalCfRoundRobinIndex = (_globalCfRoundRobinIndex + RACE_SIZE) % poolLen;
-        }
-
+        // Pick RACE_SIZE unique accounts via global round-robin so concurrent calls use different accounts
+        const creds = pickCredsRoundRobin(Math.min(RACE_SIZE, workingPool.length));
         if (creds.length === 0) break;
-        console.log(`[CF Race] Wave ${wave + 1}/${maxWaves} (Fallback): racing ${creds.length} accounts in parallel...`);
+        console.log(`[CF Race] Wave ${wave + 1}/${maxWaves}: racing ${creds.length} accounts simultaneously (Promise.any)...`);
         try {
+          // Promise.any = first success wins, others are cancelled
           const result = await Promise.any(
             creds.map(cred => makeAttempt(cred, buildRequest(cred)))
           );
           return result;
         } catch (aggErr: any) {
-          console.warn(`[CF Race] Wave ${wave + 1} fallback failed. Trying next wave...`);
+          // All racers in this wave failed — try next wave
+          console.warn(`[CF Race] Wave ${wave + 1} all failed. Trying next wave of accounts...`);
         }
       }
       throw new Error('raceCloudflare: all waves exhausted — no Cloudflare account responded.');
     };
+
 
     const extractJSON = (raw: string): any => {
       // Strip thinking/reasoning blocks that reasoning models output
