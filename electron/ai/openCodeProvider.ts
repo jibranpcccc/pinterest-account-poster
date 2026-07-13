@@ -1042,7 +1042,7 @@ Return ONLY raw JSON:
     // ── Core fetch for a single Cloudflare account ───────────────────────────────
     const makeAttempt = async (cred: { accountId: string; token: string }, req: { url: string; body: any }): Promise<string> => {
       const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 30000); // 30s hard timeout per racer
+      const tid  = setTimeout(() => ctrl.abort(), 60000); // 60s timeout — Kimi 2.6 needs up to 23s
       try {
         const res = await fetch(req.url, {
           method:  'POST',
@@ -1260,25 +1260,37 @@ Return ONLY raw JSON, no markdown, no code blocks:
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `Pinterest SEO expert. Write metadata for one hairstyle pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
+    const seoPrompt = `You are a Pinterest SEO expert for the global hairstyle niche (all genders, ages, ethnicities, hair types). Write metadata for one pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
 
 BOARD: ${boardName || 'none'}
 ${truthSource}
 
 RULES:
-- suggestedBoardKeyword: Clean board name into a natural Pinterest search keyword (e.g. "ponytail hairstyle for Black women"). Never double words like "hair hair".
-- boardFit: strong/partial/weak/mismatch. shouldPost=false only if clear mismatch.
-- ALWAYS write complete title, description, altText even if mismatch.
-- Use only what is visible/stated. Do NOT invent details.
-- No emojis, no hashtags, no pipe "|", no spammy adjectives (stunning, viral, amazing, obsession).
-- No AI/prompt references. No banned openers: Discover, Achieve, Get inspired, Check out, Looking for.
-- Inclusive language. Only mention race/gender if clearly stated. Capitalize "Black".
+- suggestedBoardKeyword: Transform board name into a natural Pinterest keyword. Fix awkward phrasing (e.g. "pony tailed hairstyle black women" → "ponytail hairstyle for Black women"). Never create double words like "hair hair".
+- boardFit: strong/partial/weak/mismatch. shouldPost=false ONLY if clear mismatch. Even on mismatch, write complete title/description/altText.
+- Use ONLY what is visible/stated. Do NOT invent hairstyles, colors, accessories, or styling details.
+- No emojis, no hashtags, no pipe "|", no plus "+". No spammy adjectives: stunning, amazing, viral, trending, obsession, must-have, hair goals.
+- No AI/prompt references. Forbidden description openers: Discover, Achieve, Get inspired, Check out, Looking for.
+- Inclusive language. Only mention race/gender if clearly stated in source. Capitalize "Black" when referring to people.
 
-TITLE: 55–80 chars. Title Case. Natural Pinterest search query. Front-load main keyword. No "|" "+" emojis hashtags.
+TITLE (55–80 characters):
+- Natural Pinterest search query in Title Case.
+- Front-load the strongest keyword in the first 30 characters.
+- Include the hairstyle name clearly.
+- STRICTLY NO: pipe "|", plus "+", emojis, hashtags.
 
-DESCRIPTION: 260–360 chars total. 3–4 sentences. End with complete sentence. Include 2–4 SEO terms naturally. End with one CTA (e.g. "Save this pin for your next hairstyle idea.").
+DESCRIPTION (260–360 characters total):
+- Exactly 3–4 complete sentences. Must end with a complete sentence.
+- Start directly with the hairstyle name or keyword — NOT with Discover/Achieve/Check out/etc.
+- Include 2–4 relevant SEO terms naturally (e.g. natural hair, protective style, box braids, cornrows, curls, ponytail, fade, waves, bob, pixie).
+- End with ONE soft CTA sentence (e.g. "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Reference this before your next barber or stylist visit.").
+- No emojis, no hashtags.
 
-ALT TEXT: 15–22 words. Literal visual description. Include hair texture, color, cut, setting. No CTA, no hashtags.
+ALT TEXT (15–22 words):
+- One literal visual sentence describing exactly what is in the image.
+- Describe: hair texture, color, cut style, and setting/background.
+- Include main hairstyle keyword once if natural.
+- No CTA, no hashtags, no promotional words.
 
 Return ONLY this JSON:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
@@ -1289,12 +1301,12 @@ Return ONLY this JSON:
         (cred) => ({
           url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
           body: { 
-            messages: [{ role: 'user', content: model.includes('kimi') ? `${seoPrompt}\nIMPORTANT: Output ONLY the JSON object. Do NOT think out loud. Do NOT write reasoning steps. Respond with JSON immediately.` : seoPrompt }], 
+            messages: [{ role: 'user', content: model.includes('kimi') ? `${seoPrompt}\nIMPORTANT: Output ONLY the JSON object immediately. Do NOT include any reasoning, thinking steps, or explanation outside the JSON.` : seoPrompt }], 
             temperature: 0.6, 
-            max_tokens: model.includes('kimi') ? 1500 : 1500 
+            max_tokens: 1500
           }
         }),
-        30000  // 30s hard cap
+        60000  // 60s — Kimi 2.6 needs up to 23s; racing multiple accounts means real wall-time is much faster
       );
 
       const parsed = extractJSON(seoRaw);
@@ -1358,12 +1370,12 @@ Return ONLY raw JSON:
             (cred) => ({
               url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
               body: { 
-                messages: [{ role: 'user', content: model.includes('kimi') ? `${retryPrompt}\nIMPORTANT: Output ONLY the JSON object. Do NOT think out loud. Respond with JSON immediately.` : retryPrompt }], 
+                messages: [{ role: 'user', content: model.includes('kimi') ? `${retryPrompt}\nIMPORTANT: Output ONLY the JSON object immediately. Do NOT include reasoning or explanation outside the JSON.` : retryPrompt }], 
                 temperature: 0.7, 
-                max_tokens: model.includes('kimi') ? 1500 : 1500 
+                max_tokens: 1500
               }
             }),
-            30000
+            60000
           );
           const retryParsed = extractJSON(retryRaw);
           if (retryParsed.title && retryParsed.description) {
