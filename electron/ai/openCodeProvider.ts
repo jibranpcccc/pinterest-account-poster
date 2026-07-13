@@ -215,15 +215,21 @@ let _globalCfRoundRobinIndex = 0;
 // In dev:        __dirname = electron/ai/  → go up 2 levels
 // process.cwd() = project root in both cases — most reliable
 const _PROJECT_ROOT = (() => {
-  const cwd = process.cwd();
-  const cwdHasAccounts = require('fs').existsSync(path.join(cwd, 'cloudflare_accounts.txt'));
-  if (cwdHasAccounts) return cwd;
-  // Fallback: try walking up from __dirname
+  // In packaged .exe, files land in process.resourcesPath (next to the exe in resources/)
+  if (process.resourcesPath) {
+    const rp = path.join(process.resourcesPath, 'cloudflare_accounts.txt');
+    if (require('fs').existsSync(rp)) return process.resourcesPath;
+  }
+  // Dev / unpackaged: walk up from __dirname
   for (const rel of ['.', '..', '../..']) {
     const p = path.resolve(__dirname, rel);
     if (require('fs').existsSync(path.join(p, 'cloudflare_accounts.txt'))) return p;
   }
-  return cwd; // best-effort
+  // Fallback: cwd
+  const cwd = process.cwd();
+  if (require('fs').existsSync(path.join(cwd, 'cloudflare_accounts.txt'))) return cwd;
+  // Last resort: userData (user may have manually placed the file there)
+  return app.getPath('userData');
 })();
 
 // ── Local status file — keeps track of exhausted (429) accounts ──
@@ -789,12 +795,15 @@ Return ONLY raw JSON:
     const pool: { accountId: string; token: string }[] = [];
     const nowSec = now / 1000;
 
-    // ── PRIMARY: Load from local project file (not Hermes) ──
+    // ── PRIMARY: Load from local project file — check all possible paths ──
     const localPaths = [
-      LOCAL_CF_ACCOUNTS_PATH,
-      path.join(__dirname, '..', '..', 'cloudflare_working_accounts.txt'),
-      'c:\\Users\\jibra\\Desktop\\1\\hermes agent\\cloudflare_working_accounts.txt' // fallback
-    ];
+      LOCAL_CF_ACCOUNTS_PATH,                                                        // resolved _PROJECT_ROOT/cloudflare_accounts.txt
+      process.resourcesPath ? path.join(process.resourcesPath, 'cloudflare_accounts.txt') : null,  // packaged .exe resources/
+      path.join(app.getPath('userData'), 'cloudflare_accounts.txt'),                // user placed file in AppData
+      path.join(__dirname, '..', '..', 'cloudflare_accounts.txt'),                  // dev fallback
+      path.join(__dirname, '..', '..', 'cloudflare_working_accounts.txt'),          // legacy name
+    ].filter(Boolean) as string[];
+
     for (const txtPath of localPaths) {
       if (fs.existsSync(txtPath)) {
         try {
