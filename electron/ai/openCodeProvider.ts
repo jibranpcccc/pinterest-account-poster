@@ -1260,60 +1260,27 @@ Return ONLY raw JSON, no markdown, no code blocks:
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `You are an expert Pinterest SEO copywriter and metadata generator for the global hairstyle niche. The niche covers all hair styles for all people, including:
-- Men, women, teens, and kids.
-- All ethnicities and hair types: Black, White, Asian, Latin, Middle Eastern, etc.
-- All hair patterns: straight, wavy, curly, coily, protective styles, shaved/bald.
-- All style categories: ponytails, braids, buns, fades, curls, waves, short hair, long hair, wigs, protective styles, natural hair, processed hair, etc.
+    const seoPrompt = `Pinterest SEO expert. Write metadata for one hairstyle pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
 
-Write Pinterest metadata (Title, Description, Alt Text) for one pin.
-
-BOARD NAME: ${boardName || 'none'}
+BOARD: ${boardName || 'none'}
 ${truthSource}
 
-Transform the BOARD NAME into the most natural Pinterest search keyword (suggestedBoardKeyword). Clean any awkward phrasing (e.g., "pony tailed hairstyle black women" -> "ponytail hairstyle for Black women", "Men Fade Hairstyles" -> "fade hairstyles for men"). Never create double phrases like "hair hair" or "hairstyle hair".
+RULES:
+- suggestedBoardKeyword: Clean board name into a natural Pinterest search keyword (e.g. "ponytail hairstyle for Black women"). Never double words like "hair hair".
+- boardFit: strong/partial/weak/mismatch. shouldPost=false only if clear mismatch.
+- ALWAYS write complete title, description, altText even if mismatch.
+- Use only what is visible/stated. Do NOT invent details.
+- No emojis, no hashtags, no pipe "|", no spammy adjectives (stunning, viral, amazing, obsession).
+- No AI/prompt references. No banned openers: Discover, Achieve, Get inspired, Check out, Looking for.
+- Inclusive language. Only mention race/gender if clearly stated. Capitalize "Black".
 
-BoardFit check: does the hairstyle match the board? strong/partial/weak/mismatch. Set shouldPost=false if mismatch.
+TITLE: 55–80 chars. Title Case. Natural Pinterest search query. Front-load main keyword. No "|" "+" emojis hashtags.
 
-STRICT RULES FOR ANALYSIS:
-- EVEN IF THERE IS A MISMATCH (shouldPost is false), you MUST still generate a complete, valid, high-quality title, description, and alt text describing the image content. Do not leave fields empty.
-- Use the provided prompt/visual data as the ONLY truth source.
-- Do not invent hairstyles, colors, accessories, extensions, beads, cuffs, outfit details, background details, age, or styling features unless clearly mentioned.
-- Do not keyword-stuff.
-- Do not mention "AI image", "prompt", "generated", or "Pinterest board".
-- Avoid spammy adjectives (stunning, amazing, perfect, viral, trending, obsession, must-have, hair goals). Replace with neutral alternatives (great, ideal, stylish, modern, classic).
+DESCRIPTION: 260–360 chars total. 3–4 sentences. End with complete sentence. Include 2–4 SEO terms naturally. End with one CTA (e.g. "Save this pin for your next hairstyle idea.").
 
-INCLUSIVE & ETHICAL LANGUAGE:
-- Use neutral, inclusive language by default (e.g., "women," "men," "people," or "someone with [hair type]").
-- Do not assume ethnicity, skin tone, or gender unless explicitly stated in the source data.
-- Only mention ethnicity or race (e.g., Black, White, Asian, Latin) if clearly implied or stated. Capitalize "Black" when referring to people.
-- Never identify or speculate about a real person's identity. Avoid health, race, religion, political or sensitive inferences unless explicit.
+ALT TEXT: 15–22 words. Literal visual description. Include hair texture, color, cut, setting. No CTA, no hashtags.
 
-TITLE (55–80 characters):
-- Natural Pinterest search query, not a sentence. Use Title Case (clean title case).
-- Write between 55 and 80 characters to ensure it meets minimum length rules.
-- CRITICAL: Front-load the strongest keyword in the first 30 characters when possible.
-- Include the hairstyle name clearly.
-- STRICTLY FORBIDDEN IN TITLES: pipe symbols ("|"), plus symbols ("+"), emojis, and hashtags. Any title containing these characters is invalid.
-- Make the title natural, searchable, and human-written. Ensure variety if doing multiple prompts.
-
-DESCRIPTION (260–360 characters):
-- MUST be strictly between 260 and 360 characters (final written length must be within this range to prevent being too short).
-- MUST be exactly 3 to 4 sentences in total and must end with a complete sentence.
-- NEVER start the description with the following forbidden words: "Discover", "Achieve", "Get inspired", "Check out", or "Looking for". Start directly with the hairstyle name or a natural keyword.
-- Emojis and hashtags are strictly prohibited in the description. Do not output them.
-- Describe exactly what the prompt shows. Do not use incorrect category terms.
-- Include 2-4 useful relevant SEO terms naturally (e.g., natural hair, protective style, sleek edges, cornrows, curls, ponytail, bun, braids, short hair, long hair, wigs, fade, waves, coily, straight hair, kids hairstyles, men's hairstyles, easy hairstyle, salon-ready).
-- Include ONE soft Call-to-Action (CTA) at the end. Example variations to use: "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Tap the link for step-by-step styling tips.", "Save this style for your next protective hairstyle.", "Reference this before your next barber or stylist visit."
-
-ALT TEXT (15–22 words):
-- Simple, literal visual sentence describing the visible hairstyle simply and accessibly.
-- MUST contain between 15 and 22 words (do not write shorter than 15 words). To meet this length, describe the texture, color, cut, and background setting explicitly.
-- Include the main hairstyle keyword once if natural.
-- No hashtags, no CTA, no promotional words, no emojis, no grammar mistakes.
-- If gender or ethnicity is clear (e.g., "Black woman," "Asian man," "young girl"), mention it naturally. If not specified, use neutral phrasing (e.g., "person with short curly hair").
-
-Return ONLY raw JSON matching this schema:
+Return ONLY this JSON:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
 
 
@@ -1322,12 +1289,12 @@ Return ONLY raw JSON matching this schema:
         (cred) => ({
           url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
           body: { 
-            messages: [{ role: 'user', content: model.includes('kimi') ? `${seoPrompt}\nCRITICAL: Keep your reasoning/thought process extremely brief (under 100 words) so you do not exceed the Cloudflare output token budget.` : seoPrompt }], 
-            temperature: 0.7, 
-            max_tokens: model.includes('kimi') ? 4000 : 2500 
+            messages: [{ role: 'user', content: model.includes('kimi') ? `${seoPrompt}\nIMPORTANT: Output ONLY the JSON object. Do NOT think out loud. Do NOT write reasoning steps. Respond with JSON immediately.` : seoPrompt }], 
+            temperature: 0.6, 
+            max_tokens: model.includes('kimi') ? 1500 : 1500 
           }
         }),
-        45000  // 45s — reasoning models take 10-15s typically
+        30000  // 30s hard cap
       );
 
       const parsed = extractJSON(seoRaw);
@@ -1356,10 +1323,10 @@ Return ONLY raw JSON matching this schema:
       let retried          = false;
 
       let retryCount = 0;
-      const MAX_RETRIES = 5;
+      const MAX_RETRIES = 1; // Speed: only 1 retry max — avoid multi-round Kimi calls
 
-      // ── AUTO-RETRY if audit score < 70 ─────────────────────
-      while (audit.score < 70 && retryCount < MAX_RETRIES) {
+      // ── AUTO-RETRY if audit score < 50 (was 70) — less aggressive for speed ────
+      while (audit.score < 50 && retryCount < MAX_RETRIES) {
         retryCount++;
         console.warn(`[Audit] Score ${audit.score}/100 — issues: ${audit.issues.join('; ')}. Auto-retrying with feedback (Attempt ${retryCount}/${MAX_RETRIES})...`);
         const retryPrompt = `You are a senior Pinterest SEO strategist. Your PREVIOUS attempt to write metadata for this pin was rejected because of quality issues.
@@ -1391,12 +1358,12 @@ Return ONLY raw JSON:
             (cred) => ({
               url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
               body: { 
-                messages: [{ role: 'user', content: model.includes('kimi') ? `${retryPrompt}\nCRITICAL: Keep your reasoning/thought process extremely brief (under 100 words) so you do not exceed the Cloudflare output token budget.` : retryPrompt }], 
-                temperature: 0.8, 
-                max_tokens: model.includes('kimi') ? 4000 : 2500 
+                messages: [{ role: 'user', content: model.includes('kimi') ? `${retryPrompt}\nIMPORTANT: Output ONLY the JSON object. Do NOT think out loud. Respond with JSON immediately.` : retryPrompt }], 
+                temperature: 0.7, 
+                max_tokens: model.includes('kimi') ? 1500 : 1500 
               }
             }),
-            45000
+            30000
           );
           const retryParsed = extractJSON(retryRaw);
           if (retryParsed.title && retryParsed.description) {
