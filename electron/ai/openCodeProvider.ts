@@ -868,7 +868,7 @@ Return ONLY raw JSON:
           accountId = sel.accountId;
           baseUrl   = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
         }
-        if (!model || model === 'opencode-big-pickle') model = '@cf/moonshotai/kimi-k2.6'; // User preference: Kimi is 100% working
+        if (!model || model === 'opencode-big-pickle') model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'; // Fast + high quality, 6s vs Kimi's 36s
       }
 
       if (!apiKey) throw new Error('API key is missing. Please configure your AI API key in Settings.');
@@ -961,7 +961,7 @@ Return ONLY raw JSON:
     const config = await this.getClientConfig();
     let model = config.model;
     if (!model || model === 'opencode-big-pickle') {
-      model = '@cf/moonshotai/kimi-k2.6'; // User preference: Kimi is 100% working
+      model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'; // Fast + high quality, 6s vs Kimi's 36s
     }
 
     const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
@@ -1292,12 +1292,12 @@ Return ONLY this JSON:
         (cred) => ({
           url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${model}`,
           body: { 
-            messages: [{ role: 'user', content: model.includes('kimi') ? `${seoPrompt}\nIMPORTANT: Output ONLY the JSON object immediately. Do NOT include any reasoning, thinking steps, or explanation outside the JSON.` : seoPrompt }], 
+            messages: [{ role: 'user', content: seoPrompt }], 
             temperature: 0.6, 
-            max_tokens: 1500
+            max_tokens: 800  // 800 is enough for Llama (no thinking blocks); was 1500 for Kimi which caused 36s delays
           }
         }),
-        60000  // 60s — Kimi 2.6 needs up to 23s; racing multiple accounts means real wall-time is much faster
+        30000  // 30s timeout — Llama-3.3-70B-FAST responds in ~6s
       );
 
       const parsed = extractJSON(seoRaw);
@@ -1363,7 +1363,7 @@ Return ONLY raw JSON:
               body: { 
                 messages: [{ role: 'user', content: model.includes('kimi') ? `${retryPrompt}\nIMPORTANT: Output ONLY the JSON object immediately. Do NOT include reasoning or explanation outside the JSON.` : retryPrompt }], 
                 temperature: 0.7, 
-                max_tokens: 1500
+                max_tokens: 800
               }
             }),
             60000
