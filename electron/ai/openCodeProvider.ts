@@ -1279,15 +1279,15 @@ DESCRIPTION (260–360 characters total):
 - End with ONE soft CTA sentence (e.g. "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Reference this before your next barber or stylist visit.").
 - No emojis, no hashtags.
 
-ALT TEXT (15–22 words):
-- One literal visual sentence describing exactly what is in the image.
-- Describe: hair texture, color, cut style, and setting/background.
-- Include main hairstyle keyword once if natural.
+ALT TEXT — CRITICAL: MUST BE EXACTLY 15–22 WORDS (count every word):
+- One complete literal sentence describing exactly what is visible in the image.
+- Must include: hairstyle name + hair color + length/texture + one more visual detail (accessories, background, face signals).
+- GOOD EXAMPLES (15-22 words): "Woman with long honey blonde balayage waves and face-framing highlights against a neutral background", "Black woman with medium-length box braids adorned with gold cuffs falling past her shoulders"
+- BAD EXAMPLES (too short, REJECTED): "Textured wolf cut on dark hair", "Man with fade haircut"
 - No CTA, no hashtags, no promotional words.
 
 Return ONLY this JSON:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
-
 
     try {
       const seoRaw = await raceCloudflare(
