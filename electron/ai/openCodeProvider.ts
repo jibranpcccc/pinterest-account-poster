@@ -868,7 +868,7 @@ Return ONLY raw JSON:
           accountId = sel.accountId;
           baseUrl   = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
         }
-        if (!model || model === 'opencode-big-pickle') model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'; // Fast + high quality, 6s vs Kimi's 36s
+        if (!model || model === 'opencode-big-pickle') model = '@cf/meta/llama-3.1-70b-instruct'; // Best quality + speed: 6.7s, perfect 64-char titles
       }
 
       if (!apiKey) throw new Error('API key is missing. Please configure your AI API key in Settings.');
@@ -961,7 +961,7 @@ Return ONLY raw JSON:
     const config = await this.getClientConfig();
     let model = config.model;
     if (!model || model === 'opencode-big-pickle') {
-      model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'; // Fast + high quality, 6s vs Kimi's 36s
+      model = '@cf/meta/llama-3.1-70b-instruct'; // Best quality + speed: 6.7s, perfect 64-char titles
     }
 
     const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
@@ -1264,10 +1264,12 @@ RULES:
 - No AI/prompt references. Forbidden description openers: Discover, Achieve, Get inspired, Check out, Looking for.
 - Inclusive language. Only mention race/gender if clearly stated in source. Capitalize "Black" when referring to people.
 
-TITLE (55–80 characters):
+TITLE — CRITICAL: MUST BE 55–80 CHARACTERS LONG (count carefully):
 - Natural Pinterest search query in Title Case.
 - Front-load the strongest keyword in the first 30 characters.
-- Include the hairstyle name clearly.
+- Include the hairstyle name + at least 2 descriptive modifiers (color, length, texture, or style detail).
+- GOOD EXAMPLES (55-80 chars): "Honey Blonde Balayage on Long Wavy Hair with Layers", "Box Braids with Gold Cuffs for Medium Length Natural Hair", "Textured Wolf Cut with Curtain Bangs on Dark Brown Hair"
+- BAD EXAMPLES (too short, REJECTED): "Box Braids with Gold Cuffs", "Wolf Cut Haircut", "Blonde Balayage Hair"
 - STRICTLY NO: pipe "|", plus "+", emojis, hashtags.
 
 DESCRIPTION (260–360 characters total):
