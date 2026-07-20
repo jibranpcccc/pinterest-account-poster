@@ -1,4 +1,17 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, clipboard, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, clipboard, dialog, Tray, Menu } from 'electron';
+
+// Enforce single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log('⚠️ Another instance of Pinterest Pin Publisher is already running. Quitting.');
+  app.quit();
+  process.exit(0);
+}
+
+if (process.env.TEST_USER_DATA_DIR) {
+  app.setPath('userData', process.env.TEST_USER_DATA_DIR);
+}
+
 import AdmZip from 'adm-zip';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -9,6 +22,10 @@ import { OpenCodeProvider } from './ai/openCodeProvider';
 import { AnalyticsFetcher } from './publisher/analyticsFetcher';
 import { RepinExecutor } from './publisher/repinExecutor';
 import { Account, Board, Draft, QueueJob } from './types';
+
+let tray: Tray | null = null;
+let isQuitting = false;
+
 
 // ===== Auto-Pilot Fleet Engine State =====
 let isFleetAutoPilotEnabled = false;
@@ -66,6 +83,159 @@ async function runFleetEngine() {
     fleetTimeout = setTimeout(() => runFleetEngine(), 30000); // Check for new jobs every 30s
   }
 }
+// ===== Scheduler Engine State & Loop =====
+let schedulerInterval: NodeJS.Timeout | null = null;
+
+export function parseScheduledDateTime(dateStr: string, timeStr: string): Date {
+  const timeTrimmed = timeStr.trim();
+  const timeLower = timeTrimmed.toLowerCase();
+  const isAmPm = timeLower.endsWith('am') || timeLower.endsWith('pm');
+  
+  if (isAmPm) {
+    const isPm = timeLower.endsWith('pm');
+    const timeWithoutAmPm = timeTrimmed.slice(0, -2).trim();
+    const parts = timeWithoutAmPm.split(':');
+    let hour = parseInt(parts[0], 10);
+    let minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    let second = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+    
+    if (!isNaN(hour) && !isNaN(minute) && !isNaN(second)) {
+      if (isPm) {
+        if (hour !== 12) {
+          hour += 12;
+        }
+      } else {
+        if (hour === 12) {
+          hour = 0;
+        }
+      }
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const formattedTime = `${pad(hour)}:${pad(minute)}:${pad(second)}`;
+      return new Date(`${dateStr}T${formattedTime}`);
+    }
+  }
+  
+  return new Date(`${dateStr}T${timeTrimmed}`);
+}
+
+function startScheduler() {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+  }
+
+  console.log('⏰ Scheduler: Starting background scheduler loop (runs every 60s)...');
+
+  schedulerInterval = setInterval(async () => {
+    if (!dbManager || !publisherAdapter) return;
+
+    try {
+      // Query the database for scheduled jobs
+      const allScheduledJobs = await dbManager.query<QueueJob>("SELECT * FROM queue_jobs WHERE status = 'scheduled'");
+      // JSON fallback database returns all queue jobs, SQLite returns filtered.
+      // So filter with JavaScript date comparison to handle both.
+      const scheduledJobs = allScheduledJobs.filter(j => j.status === 'scheduled');
+      if (scheduledJobs.length === 0) return;
+
+      const now = new Date();
+      const dueJobs = scheduledJobs.filter(job => {
+        if (!job.scheduledDate || !job.scheduledTime) return false;
+        try {
+          const jobTime = parseScheduledDateTime(job.scheduledDate, job.scheduledTime);
+          return !isNaN(jobTime.getTime()) && jobTime <= now;
+        } catch (e) {
+          console.error(`[Scheduler] Error parsing scheduled date/time for job ${job.id}:`, e);
+          return false;
+        }
+      });
+
+      if (dueJobs.length > 0) {
+        if (publisherAdapter.isQueueActive()) {
+          console.warn(`[Scheduler] Queue executor is already active. Skipping execution for ${dueJobs.length} scheduled jobs to prevent conflicts.`);
+          return;
+        }
+
+        console.log(`[Scheduler] Triggering ${dueJobs.length} scheduled jobs:`, dueJobs.map(j => j.id));
+
+        const jobIdsToRun: string[] = [];
+
+        // Update status to 'running' immediately to prevent double-firing
+        for (const job of dueJobs) {
+          job.status = 'running';
+          await dbManager.saveQueueJob(job);
+          jobIdsToRun.push(job.id);
+
+          // Emit scheduler:fired event
+          mainWindow?.webContents.send('scheduler:fired', job.id);
+        }
+
+        // Trigger queue execution
+        publisherAdapter.processQueue(jobIdsToRun, (progressData) => {
+          mainWindow?.webContents.send('queue:progress', progressData);
+        }).catch((err) => {
+          console.error('[Scheduler] Queue processing crashed:', err);
+        });
+      }
+    } catch (err) {
+      console.error('[Scheduler] Error in background loop:', err);
+    }
+  }, 60000);
+}
+
+export async function updateTrayTooltip() {
+  if (!tray || !dbManager) return;
+  try {
+    const queue = await dbManager.getQueue();
+    const active = queue.filter(j => j.status === 'pending' || j.status === 'scheduled' || j.status === 'running').length;
+    const successful = queue.filter(j => j.status === 'completed').length;
+    const failed = queue.filter(j => j.status === 'failed').length;
+    
+    const tooltipText = `Pinterest Publisher\nActive Queue: ${active}\nSuccessful: ${successful}\nFailed: ${failed}`;
+    tray.setToolTip(tooltipText.substring(0, 127));
+  } catch (e) {
+    console.error('Failed to update tray tooltip:', e);
+  }
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon.ico');
+  if (!fs.existsSync(iconPath)) {
+    console.warn(`⚠️ Tray icon not found at: ${iconPath}`);
+  }
+  
+  tray = new Tray(iconPath);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open Pinterest Publisher',
+      click: () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+  
+  tray.setContextMenu(contextMenu);
+  
+  tray.on('click', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow?.show();
+      mainWindow?.focus();
+    }
+  });
+
+  updateTrayTooltip();
+}
+
 // =========================================
 
 let mainWindow: BrowserWindow | null = null;
@@ -86,7 +256,7 @@ const logsDir = path.join(localDataDir, 'logs');
   }
 });
 
-async function createWindow() {
+async function createWindow(shouldShow = true) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 850,
@@ -99,7 +269,7 @@ async function createWindow() {
       nodeIntegration: false,
       sandbox: false
     },
-    show: true,
+    show: shouldShow,
     autoHideMenuBar: true
   });
 
@@ -107,7 +277,7 @@ async function createWindow() {
   setupSecurity();
 
   // Forward console messages from the renderer process to the main process log file
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     const levelNames = ['verbose', 'info', 'warn', 'error'];
     const levelName = levelNames[level] || 'info';
     console.log(`[RENDERER-${levelName.toUpperCase()}] ${message} (Source: ${path.basename(sourceId)}:${line})`);
@@ -122,10 +292,19 @@ async function createWindow() {
   }
 
   // Show window and open DevTools only in development
-  mainWindow.show();
+  if (shouldShow) {
+    mainWindow.show();
+  }
   if (process.env.VITE_DEV_SERVER_URL || process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
+
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -237,21 +416,31 @@ app.whenReady().then(async () => {
 
   // Initialize Adapters
   publisherAdapter = new PublisherAdapter(dbManager);
+  publisherAdapter.registerOnStatusChange(() => {
+    updateTrayTooltip();
+  });
   openCodeProvider = new OpenCodeProvider(dbManager);
 
   // Register IPC Handlers
   registerIpcHandlers();
 
-  await createWindow();
+  // Start background scheduler
+  startScheduler();
+
+  // Create tray
+  createTray();
+
+  const wasOpenedAtLogin = app.getLoginItemSettings().wasOpenedAtLogin;
+  await createWindow(!wasOpenedAtLogin);
 
   // Trigger background auto-login for connected accounts on startup (non-blocking)
   setTimeout(() => {
-    publisherAdapter.performStartupAutoLogin()
-      .then(() => {
+    publisherAdapter?.performStartupAutoLogin()
+      ?.then(() => {
         console.log('✅ Startup auto-login process finished.');
         mainWindow?.webContents.send('pinterest:browserStatus', { accountId: '', isOpen: false, message: 'Startup auto-login complete' });
       })
-      .catch((err) => {
+      ?.catch((err) => {
         console.error('❌ Error during startup auto-login:', err);
       });
   }, 3000);
@@ -263,7 +452,23 @@ app.whenReady().then(async () => {
   });
 });
 
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
 app.on('window-all-closed', async () => {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
   if (process.platform !== 'darwin') {
     if (dbManager) {
       await dbManager.close();
@@ -487,6 +692,10 @@ function registerIpcHandlers() {
     return db.getQueue();
   });
 
+  ipcMain.handle('db:saveQueueJob', async (_, job: QueueJob) => {
+    return db.saveQueueJob(job);
+  });
+
   ipcMain.handle('db:addQueueJob', async (_, job: Partial<QueueJob>) => {
     const id = job.id || Buffer.from(`job:${Date.now()}:${Math.random()}`).toString('base64').replace(/=/g, '');
     if (!job.accountId || !job.imagePath) throw new Error('Missing required fields accountId or imagePath');
@@ -556,6 +765,48 @@ function registerIpcHandlers() {
     return true;
   });
 
+  // Scheduler handlers
+  ipcMain.handle('scheduler:getStatus', async () => {
+    try {
+      const allScheduledJobs = await db.query<QueueJob>("SELECT * FROM queue_jobs WHERE status = 'scheduled'");
+      const scheduledJobs = allScheduledJobs.filter(j => j.status === 'scheduled');
+      
+      let nextJobTime: string | null = null;
+      let earliestTime = Infinity;
+      
+      for (const job of scheduledJobs) {
+        if (job.scheduledDate && job.scheduledTime) {
+          const jobTime = parseScheduledDateTime(job.scheduledDate, job.scheduledTime);
+          const ms = jobTime.getTime();
+          if (!isNaN(ms) && ms < earliestTime) {
+            earliestTime = ms;
+            const pad = (num: number) => String(num).padStart(2, '0');
+            const year = jobTime.getFullYear();
+            const month = pad(jobTime.getMonth() + 1);
+            const date = pad(jobTime.getDate());
+            const hours = pad(jobTime.getHours());
+            const minutes = pad(jobTime.getMinutes());
+            const seconds = pad(jobTime.getSeconds());
+            nextJobTime = `${year}-${month}-${date}T${hours}:${minutes}:${seconds}`;
+          }
+        }
+      }
+      
+      return {
+        active: schedulerInterval !== null,
+        nextJobTime,
+        pendingCount: scheduledJobs.length
+      };
+    } catch (e) {
+      console.error('[Scheduler] Error in scheduler:getStatus handler:', e);
+      return {
+        active: schedulerInterval !== null,
+        nextJobTime: null,
+        pendingCount: 0
+      };
+    }
+  });
+
   // Settings handlers
   ipcMain.handle('db:getSettings', async () => {
     return db.getSettings();
@@ -593,6 +844,33 @@ function registerIpcHandlers() {
   // System handlers
   ipcMain.handle('sys:openLogFolder', async () => {
     await shell.openPath(localDataDir);
+  });
+
+  ipcMain.handle('sys:setStartup', async (_, enabled: boolean) => {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        path: process.execPath
+      });
+    } catch (err) {
+      console.error('Failed to set login item settings:', err);
+    }
+  });
+
+  ipcMain.handle('sys:getStartup', async () => {
+    try {
+      const settings = app.getLoginItemSettings();
+      return {
+        openAtLogin: settings.openAtLogin,
+        wasOpenedAtLogin: settings.wasOpenedAtLogin || false
+      };
+    } catch (err) {
+      console.error('Failed to get login item settings:', err);
+      return {
+        openAtLogin: false,
+        wasOpenedAtLogin: false
+      };
+    }
   });
 
   ipcMain.handle('sys:exportBackup', async () => {

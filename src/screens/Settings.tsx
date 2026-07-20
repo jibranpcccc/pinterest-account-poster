@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { 
-  Settings as SettingsIcon, Sliders, ShieldCheck, 
-  Cpu, Sparkles, FolderOpen, AlertOctagon, HelpCircle,
+  Sliders, 
+  Cpu, Sparkles, FolderOpen, AlertOctagon,
   RefreshCw
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -21,7 +21,6 @@ export const Settings: React.FC<SettingsProps> = ({
   isMockMode,
   setIsMockMode
 }) => {
-  const [settings, setSettings] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingAI, setIsTestingAI] = useState(false);
@@ -52,11 +51,45 @@ export const Settings: React.FC<SettingsProps> = ({
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [watermarkText, setWatermarkText] = useState('');
 
+  // System & Scheduler Settings
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
+  const [showNotificationOnPost, setShowNotificationOnPost] = useState(true);
+  const [schedulerActive, setSchedulerActive] = useState(false);
+  const [nextScheduledPost, setNextScheduledPost] = useState<string | null>(null);
+  const [schedulerCount, setSchedulerCount] = useState(0);
+  const [isRefreshingScheduler, setIsRefreshingScheduler] = useState(false);
+
+  const refreshSchedulerStatus = async () => {
+    setIsRefreshingScheduler(true);
+    try {
+      const status = await api.getSchedulerStatus();
+      if (status) {
+        setSchedulerActive(status.active);
+        setNextScheduledPost(status.nextJobTime);
+        setSchedulerCount(status.pendingCount);
+      }
+    } catch (e) {
+      console.error('Failed to get scheduler status:', e);
+    } finally {
+      setIsRefreshingScheduler(false);
+    }
+  };
+
+  const formatNextPostTime = (timeStr: string | null) => {
+    if (!timeStr) return 'None scheduled';
+    try {
+      const date = new Date(timeStr);
+      if (isNaN(date.getTime())) return timeStr;
+      return date.toLocaleString();
+    } catch (e) {
+      return timeStr;
+    }
+  };
+
   const loadSettings = async () => {
     setIsLoading(true);
     try {
       const data = await api.getSettings();
-      setSettings(data);
       setIsMockMode(data.mockMode === true);
 
       // Pacing delays
@@ -88,6 +121,14 @@ export const Settings: React.FC<SettingsProps> = ({
       // Watermark Settings
       setWatermarkEnabled(data.watermarkEnabled === true);
       setWatermarkText(data.watermarkText || '');
+
+      // System & Notification Settings
+      setShowNotificationOnPost(data.showNotificationOnPost !== false);
+      const startupSettings = await api.getStartup();
+      setLaunchAtStartup(startupSettings ? startupSettings.openAtLogin : false);
+
+      // Initial Scheduler status check
+      await refreshSchedulerStatus();
     } catch (e) {
       console.error('Failed to load settings:', e);
     } finally {
@@ -97,6 +138,22 @@ export const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     loadSettings();
+
+    const interval = setInterval(() => {
+      refreshSchedulerStatus().catch(console.error);
+    }, 30000);
+
+    let unsubscribe: (() => void) | undefined;
+    if (typeof api.onSchedulerFired === 'function') {
+      unsubscribe = api.onSchedulerFired((_jobId: any) => {
+        refreshSchedulerStatus().catch(console.error);
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const handleSaveSettings = async () => {
@@ -126,6 +183,10 @@ export const Settings: React.FC<SettingsProps> = ({
       // Watermark Settings
       await api.saveSetting('watermarkEnabled', watermarkEnabled);
       await api.saveSetting('watermarkText', watermarkText);
+
+      // System & Notification Settings
+      await api.saveSetting('showNotificationOnPost', showNotificationOnPost);
+      await api.setStartup(launchAtStartup);
 
       onShowToast('Settings saved successfully.', 'success');
       await onRefreshSettings();
@@ -358,6 +419,76 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
             </div>
           </Card>
+
+          {/* System & Scheduler Card */}
+          <Card title="System & Scheduler" subtitle="Startup, Notifications & Scheduler State" className="border-slate-800">
+            <div className="flex flex-col gap-4 text-sm">
+              {/* Startup Toggle */}
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3 font-medium">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-slate-200">Launch at Windows startup</span>
+                  <span className="text-[11px] text-slate-500">Automatically open Pinterest Publisher when your PC starts up.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={launchAtStartup}
+                  onChange={(e) => setLaunchAtStartup(e.target.checked)}
+                  className="rounded border-slate-800 text-pinterest-red bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+              </div>
+
+              {/* Notification Toggle */}
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3 font-medium">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-slate-200">Post Notifications</span>
+                  <span className="text-[11px] text-slate-500">Show desktop notifications when a Pin is successfully published or fails.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showNotificationOnPost}
+                  onChange={(e) => setShowNotificationOnPost(e.target.checked)}
+                  className="rounded border-slate-800 text-pinterest-red bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+              </div>
+
+              {/* Scheduler Status Indicator */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Scheduler Status</span>
+                  <button 
+                    onClick={(e) => { e.preventDefault(); refreshSchedulerStatus(); }}
+                    disabled={isRefreshingScheduler}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRefreshingScheduler ? 'animate-spin' : ''}`} /> Refresh
+                  </button>
+                </div>
+
+                <div className="bg-slate-950/45 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400">Status:</span>
+                    <span className={`text-xs font-bold ${schedulerActive ? 'text-green-400' : 'text-rose-400'}`}>
+                      {schedulerActive ? 'Active — checks every 60s' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400">Next Scheduled Post:</span>
+                    <span className="text-xs font-bold text-slate-200">
+                      {formatNextPostTime(nextScheduledPost)}
+                    </span>
+                  </div>
+                  {schedulerCount > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">Jobs in Scheduler:</span>
+                      <span className="text-xs font-bold text-purple-400">
+                        {schedulerCount} pending
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
 
         {/* Right Column */}
@@ -468,7 +599,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     setIsDiagnosing(true);
                     setDiagResult(null);
                     try {
-                      const result = await (window as any).api.aiDiagnose();
+                      const result = await api.aiDiagnose();
                       setDiagResult(result);
                     } catch (e: any) {
                       setDiagResult({ error: e.message });

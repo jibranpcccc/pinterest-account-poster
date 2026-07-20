@@ -1,25 +1,120 @@
 import React from 'react';
 import { QueueJob, Account } from '../types';
-import { Play, Trash2, RotateCcw, Image, ExternalLink, HelpCircle, FileText } from 'lucide-react';
+import { Trash2, RotateCcw, Image, ExternalLink, FileText } from 'lucide-react';
 import { Button } from './Button';
+import { api } from '../services/api';
 
 interface QueueItemRowProps {
   job: QueueJob;
   accounts: Account[];
   onDelete: (id: string) => void;
   onRetry?: (job: QueueJob) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  isSelectable?: boolean;
+  onUpdateSchedule?: (id: string, date: string, time: string) => void;
+  onUnschedule?: (id: string) => void;
 }
+
+const convert12hTo24h = (time12: string): string => {
+  if (!time12) return '';
+  const clean = time12.trim().toUpperCase();
+  if (!clean.endsWith('AM') && !clean.endsWith('PM')) {
+    return clean;
+  }
+  const isPm = clean.endsWith('PM');
+  const parts = clean.substring(0, clean.length - 2).trim().split(':');
+  let hour = parseInt(parts[0], 10);
+  const minute = parseInt(parts[1], 10);
+  if (isNaN(hour) || isNaN(minute)) return '';
+  if (isPm && hour !== 12) hour += 12;
+  if (!isPm && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const getCountdownText = (dateStr: string, timeStr: string) => {
+  const clean = timeStr.trim().toUpperCase();
+  let hour = 0, min = 0;
+  if (clean.endsWith('AM') || clean.endsWith('PM')) {
+    const isPm = clean.endsWith('PM');
+    const parts = clean.substring(0, clean.length - 2).trim().split(':');
+    hour = parseInt(parts[0], 10) || 0;
+    min = parseInt(parts[1], 10) || 0;
+    if (isPm && hour !== 12) hour += 12;
+    if (!isPm && hour === 12) hour = 0;
+  } else {
+    const parts = clean.split(':');
+    hour = parseInt(parts[0], 10) || 0;
+    min = parseInt(parts[1], 10) || 0;
+  }
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const scheduledDate = new Date(year, month - 1, day, hour, min);
+  const now = new Date();
+  const diffMs = scheduledDate.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return "Overdue — posting soon";
+  }
+  const diffSecs = Math.floor(diffMs / 1000);
+  const days = Math.floor(diffSecs / 86400);
+  const hours = Math.floor((diffSecs % 86400) / 3600);
+  const minutes = Math.floor((diffSecs % 3600) / 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+
+  return `Posts in ${parts.join(' ')}`;
+};
 
 export const QueueItemRow: React.FC<QueueItemRowProps> = ({
   job,
   accounts,
   onDelete,
-  onRetry
+  onRetry,
+  selected = false,
+  onToggleSelect,
+  isSelectable = false,
+  onUpdateSchedule,
+  onUnschedule
 }) => {
   const account = accounts.find((a) => a.id === job.accountId);
   const localImageSrc = job.imagePath ? `media:///${job.imagePath.replace(/\\/g, '/')}` : '';
   const [expanded, setExpanded] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+
+  const [localDate, setLocalDate] = React.useState(job.scheduledDate || '');
+  const [localTime, setLocalTime] = React.useState(job.scheduledTime ? convert12hTo24h(job.scheduledTime) : '');
+  const [, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setLocalDate(job.scheduledDate || '');
+    setLocalTime(job.scheduledTime ? convert12hTo24h(job.scheduledTime) : '');
+  }, [job.scheduledDate, job.scheduledTime]);
+
+  React.useEffect(() => {
+    if (job.status !== 'scheduled') return;
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [job.status]);
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    setLocalDate(newDate);
+    if (onUpdateSchedule && newDate && localTime) {
+      onUpdateSchedule(job.id, newDate, localTime);
+    }
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = e.target.value;
+    setLocalTime(newTime);
+    if (onUpdateSchedule && localDate && newTime) {
+      onUpdateSchedule(job.id, localDate, newTime);
+    }
+  };
 
   const getDomain = (url: string) => {
     try {
@@ -35,7 +130,7 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
     e.stopPropagation();
     if (job.livePinUrl) {
       try {
-        await window.electronAPI.writeToClipboard(job.livePinUrl);
+        await api.writeToClipboard(job.livePinUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (err) {
@@ -49,7 +144,8 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
     running: 'bg-yellow-950/40 border-yellow-800/60 text-yellow-400 animate-pulse',
     completed: 'bg-emerald-950/40 border-emerald-900/60 text-emerald-400',
     failed: 'bg-rose-950/40 border-rose-900/60 text-rose-400',
-    paused: 'bg-slate-800 border-slate-700 text-slate-350'
+    paused: 'bg-slate-800 border-slate-700 text-slate-350',
+    scheduled: 'bg-purple-950/40 border-purple-900/60 text-purple-400'
   };
 
   const statusLabels = {
@@ -57,13 +153,22 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
     running: 'Running',
     completed: 'Published',
     failed: 'Failed',
-    paused: 'Paused'
+    paused: 'Paused',
+    scheduled: 'Scheduled'
   };
 
   return (
     <div className="flex flex-col gap-3 p-4 bg-slate-900/40 border border-slate-880/80 rounded-xl hover:bg-slate-900/85 transition-colors">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4 min-w-0 flex-grow">
+          {isSelectable && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="rounded border-slate-800 text-pinterest-red bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer flex-shrink-0"
+            />
+          )}
           {/* Thumbnail Preview */}
           <div className="w-14 h-20 rounded-lg bg-slate-950 flex-shrink-0 border border-slate-850 overflow-hidden flex items-center justify-center">
             {localImageSrc ? (
@@ -153,6 +258,32 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
               </div>
             </div>
 
+            {job.status === 'scheduled' && (
+              <div className="mt-3 p-3 bg-purple-950/20 border border-purple-900/30 rounded-lg flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-purple-400">
+                    {job.scheduledDate && job.scheduledTime ? getCountdownText(job.scheduledDate, job.scheduledTime) : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Date</label>
+                  <input
+                    type="date"
+                    value={localDate}
+                    onChange={handleDateChange}
+                    className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-700"
+                  />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">Time</label>
+                  <input
+                    type="time"
+                    value={localTime}
+                    onChange={handleTimeChange}
+                    className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-700"
+                  />
+                </div>
+              </div>
+            )}
+
             {job.errorMessage && (
               <div className="mt-2 text-xs text-rose-400 bg-rose-955/20 border border-rose-900/30 rounded-lg p-2 max-w-full">
                 <span className="font-semibold mr-1">Error:</span> {job.errorMessage}
@@ -178,6 +309,18 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
           >
             {expanded ? 'Hide Logs' : 'View Logs'}
           </Button>
+
+          {job.status === 'scheduled' && onUnschedule && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onUnschedule(job.id)}
+              title="Unschedule job"
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
+            >
+              Unschedule
+            </Button>
+          )}
 
           {job.status === 'failed' && onRetry && (
             <Button

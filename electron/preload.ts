@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Account, Board, Draft, QueueJob, LogFilters, Log } from './types';
+import { Account, Board, Draft, QueueJob, LogFilters } from './types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Accounts
@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Queue
   getQueue: () => ipcRenderer.invoke('db:getQueue'),
   addQueueJob: (job: QueueJob) => ipcRenderer.invoke('db:addQueueJob', job),
+  saveQueueJob: (job: QueueJob) => ipcRenderer.invoke('db:saveQueueJob', job),
   updateQueueJobStatus: (id: string, status: string, error?: string) => ipcRenderer.invoke('db:updateQueueJobStatus', id, status, error),
   deleteQueueJob: (id: string) => ipcRenderer.invoke('db:deleteQueueJob', id),
   clearQueue: () => ipcRenderer.invoke('db:clearQueue'),
@@ -52,6 +53,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportBackup: () => ipcRenderer.invoke('sys:exportBackup'),
   importBackup: () => ipcRenderer.invoke('sys:importBackup'),
   writeToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
+  setStartup: (enabled: boolean) => ipcRenderer.invoke('sys:setStartup', enabled),
+  getStartup: () => ipcRenderer.invoke('sys:getStartup'),
 
   // AI Provider
   aiCall: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
@@ -81,5 +84,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLogAdded: (callback: (event: any, data: any) => void) => {
     ipcRenderer.removeAllListeners('sys:logAdded');
     ipcRenderer.on('sys:logAdded', callback);
+  },
+  getSchedulerStatus: () => ipcRenderer.invoke('scheduler:getStatus'),
+  onSchedulerFired: (callback: (jobId: string) => void) => {
+    const handler = (_: any, jobId: string) => callback(jobId);
+    ipcRenderer.on('scheduler:fired', handler);
+    return () => ipcRenderer.removeListener('scheduler:fired', handler);
   }
 });

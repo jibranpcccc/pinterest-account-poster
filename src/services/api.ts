@@ -43,6 +43,10 @@ declare global {
       openLogFolder: () => Promise<void>;
       exportBackup: () => Promise<string>;
       importBackup: (zipPath: string) => Promise<boolean>;
+      setStartup: (enabled: boolean) => Promise<void>;
+      getStartup: () => Promise<{ openAtLogin: boolean; wasOpenedAtLogin: boolean }>;
+      writeToClipboard: (text: string) => Promise<void>;
+      aiDiagnose: () => Promise<any>;
       toggleFleet: (enabled: boolean) => Promise<boolean>;
       getFleetStatus: () => Promise<boolean>;
       onFleetLog: (cb: (msg: string) => void) => () => void;
@@ -53,6 +57,9 @@ declare global {
       onQueueProgress: (callback: (event: any, data: any) => void) => void;
       onBrowserStatusChange: (callback: (event: any, data: any) => void) => void;
       onLogAdded: (callback: (event: any, data: any) => void) => void;
+      saveQueueJob: (job: QueueJob) => Promise<any>;
+      getSchedulerStatus: () => Promise<{ active: boolean; nextJobTime: string | null; pendingCount: number }>;
+      onSchedulerFired: (callback: (jobId: string) => void) => () => void;
     };
   }
 }
@@ -69,12 +76,12 @@ const mockStore = {
       updatedAt: new Date().toISOString(),
       lastUsedAt: new Date().toISOString()
     }
-  ],
+  ] as Account[],
   boards: [
     { id: 'mb-1', accountId: 'mock-acc-1', name: 'Kitchen Remodel DIY', url: 'https://www.pinterest.com/greyson/kitchen-remodel-diy/', lastFetchedAt: new Date().toISOString() },
     { id: 'mb-2', accountId: 'mock-acc-1', name: 'Cozy Living Room Decor', url: 'https://www.pinterest.com/greyson/cozy-living-room-decor/', lastFetchedAt: new Date().toISOString() },
     { id: 'mb-3', accountId: 'mock-acc-1', name: 'Modern Architecture Design', url: 'https://www.pinterest.com/greyson/modern-architecture/', lastFetchedAt: new Date().toISOString() }
-  ],
+  ] as Board[],
   drafts: [
     {
       id: 'md-1',
@@ -92,7 +99,7 @@ const mockStore = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
-  ],
+  ] as Draft[],
   queue: [] as QueueJob[],
   settings: {
     mockMode: true,
@@ -247,6 +254,18 @@ const getApiMethod = (methodName: string) => {
       },
       addQueueJob: async (job: Partial<QueueJob>) => {
         const id = job.id || `job-${Date.now()}-${Math.random()}`;
+        const existingIdx = job.id ? mockStore.queue.findIndex(q => q.id === job.id) : -1;
+        if (existingIdx !== -1) {
+          const existingJob = mockStore.queue[existingIdx];
+          const updatedJob: QueueJob = {
+            ...existingJob,
+            ...job,
+            id: existingJob.id
+          };
+          mockStore.queue[existingIdx] = updatedJob;
+          return updatedJob;
+        }
+
         const newJob: QueueJob = {
           id,
           accountId: job.accountId || 'mock-acc-1',
@@ -312,6 +331,48 @@ const getApiMethod = (methodName: string) => {
         console.log('Mock: Import backup requested');
         return true;
       },
+      setStartup: async (enabled: boolean) => {
+        console.log('Mock: setStartup requested with', enabled);
+        mockStore.settings.autostart = enabled;
+      },
+      getStartup: async () => {
+        console.log('Mock: getStartup requested');
+        return { openAtLogin: !!mockStore.settings.autostart, wasOpenedAtLogin: false };
+      },
+      writeToClipboard: async (text: string) => {
+        console.log('Mock: writeToClipboard requested', text);
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard) {
+            await navigator.clipboard.writeText(text);
+          }
+        } catch (e) {
+          console.error('Mock clipboard write failed', e);
+        }
+      },
+      aiDiagnose: async () => {
+        return {
+          resourcesPath: 'N/A (Mock Mode)',
+          foundPath: 'NOT FOUND (Mock Mode)',
+          accountCount: 1,
+          searchPaths: [],
+          speedMs: 120,
+          platform: 'browser',
+          version: '1.0.0-mock'
+        };
+      },
+      toggleFleet: async (enabled: boolean) => {
+        console.log('Mock toggle fleet:', enabled);
+        return true;
+      },
+      getFleetStatus: async () => {
+        return false;
+      },
+      onFleetLog: (_cb: (msg: string) => void) => {
+        return () => {};
+      },
+      onFleetJobUpdate: (_cb: () => void) => {
+        return () => {};
+      },
       callAI: async (action: string, payload: any) => {
         console.log('Mock AI call:', action, payload);
         if (action === 'validatePinMetadata') {
@@ -321,7 +382,64 @@ const getApiMethod = (methodName: string) => {
       },
       onQueueProgress: () => {},
       onBrowserStatusChange: () => {},
-      onLogAdded: () => {}
+      onLogAdded: () => {},
+      saveQueueJob: async (job: QueueJob) => {
+        const idx = mockStore.queue.findIndex(q => q.id === job.id);
+        if (idx !== -1) {
+          mockStore.queue[idx] = { ...mockStore.queue[idx], ...job };
+          return mockStore.queue[idx];
+        } else {
+          mockStore.queue.push(job);
+          return job;
+        }
+      },
+      getSchedulerStatus: async () => {
+        const scheduledJobs = mockStore.queue.filter(q => q.status === 'scheduled');
+        let nextJobTime: string | null = null;
+        if (scheduledJobs.length > 0) {
+          let earliestMs = Infinity;
+          for (const job of scheduledJobs) {
+            if (job.scheduledDate && job.scheduledTime) {
+              try {
+                const timeTrimmed = job.scheduledTime.trim().toLowerCase();
+                let hour = 0, minute = 0;
+                if (timeTrimmed.endsWith('am') || timeTrimmed.endsWith('pm')) {
+                  const isPm = timeTrimmed.endsWith('pm');
+                  const parts = timeTrimmed.slice(0, -2).trim().split(':');
+                  hour = parseInt(parts[0], 10);
+                  minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+                  if (isPm && hour !== 12) hour += 12;
+                  if (!isPm && hour === 12) hour = 0;
+                } else {
+                  const parts = timeTrimmed.split(':');
+                  hour = parseInt(parts[0], 10);
+                  minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+                }
+                const jobTime = new Date(`${job.scheduledDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+                const ms = jobTime.getTime();
+                if (!isNaN(ms) && ms < earliestMs) {
+                  earliestMs = ms;
+                  nextJobTime = jobTime.toISOString();
+                }
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+          if (!nextJobTime) {
+            const mockDate = new Date(Date.now() + 120000);
+            nextJobTime = mockDate.toISOString();
+          }
+        }
+        return {
+          active: true,
+          nextJobTime,
+          pendingCount: scheduledJobs.length
+        };
+      },
+      onSchedulerFired: (_callback: (jobId: string) => void) => {
+        return () => {};
+      }
     };
 
     if (typeof mockApis[methodName] === 'function') {
@@ -332,7 +450,7 @@ const getApiMethod = (methodName: string) => {
 };
 
 export const api = new Proxy({} as any, {
-  get: (target, prop) => {
+  get: (_target, prop) => {
     return getApiMethod(String(prop));
   }
 });

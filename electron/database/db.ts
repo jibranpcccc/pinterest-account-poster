@@ -270,7 +270,8 @@ export class DbManager {
       { key: 'aiBaseUrl', value: JSON.stringify('https://api.opencode.dev/v1') },
       { key: 'aiApiKey', value: JSON.stringify('') },
       { key: 'aiModel', value: JSON.stringify('@cf/mistralai/mistral-small-3.1-24b-instruct') },
-      { key: 'aiTimeout', value: JSON.stringify(30) }
+      { key: 'aiTimeout', value: JSON.stringify(30) },
+      { key: 'showNotificationOnPost', value: JSON.stringify(true) }
     ];
 
     for (const item of defaults) {

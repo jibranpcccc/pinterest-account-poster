@@ -1,6 +1,6 @@
 {
     "name":  "pinterest-pin-publisher",
-    "version":  "1.0.43",
+    "version":  "1.0.44",
     "description":  "Automated Pinterest Pin Publishing System",
     "main":  "dist-electron/main.js",
     "scripts":  {
@@ -56,6 +56,7 @@
                   "files":  [
                                 "dist-electron/**/*",
                                 "dist/**/*",
+                                "assets/**/*",
                                 "package.json",
                                 "cloudflare_accounts.txt",
                                 "node_modules/**/*",

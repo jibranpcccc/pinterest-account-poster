@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Account, Board } from '../types';
 import { api } from '../services/api';
 import { 
-  Repeat, Play, Trash2, PlusCircle, CheckCircle, XCircle, RefreshCw
+  Repeat, Play, Trash2, PlusCircle, CheckCircle, XCircle, RefreshCw, Wand2
 } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -45,17 +45,24 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
 
   useEffect(() => {
     // Listen to Fleet Engine updates
-    if (window.electron) {
-      window.electron.getFleetStatus().then(setAutoPilotEnabled);
-      const unsubUpdate = window.electron.onFleetJobUpdate(() => fetchJobs());
-      const unsubLog = window.electron.onFleetLog((msg) => {
+    let unsubUpdate: (() => void) | undefined;
+    let unsubLog: (() => void) | undefined;
+
+    api.getFleetStatus().then(setAutoPilotEnabled).catch(console.error);
+    
+    try {
+      unsubUpdate = api.onFleetJobUpdate(() => fetchJobs());
+      unsubLog = api.onFleetLog((msg: string) => {
         setFleetLogs(prev => [msg, ...prev].slice(0, 5));
       });
-      return () => {
-        unsubUpdate();
-        unsubLog();
-      };
+    } catch (err) {
+      console.error("Failed to register fleet listeners", err);
     }
+
+    return () => {
+      if (typeof unsubUpdate === 'function') unsubUpdate();
+      if (typeof unsubLog === 'function') unsubLog();
+    };
   }, []);
 
   useEffect(() => {
@@ -70,9 +77,12 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
   const handleToggleAutoPilot = async () => {
     const newState = !autoPilotEnabled;
     setAutoPilotEnabled(newState);
-    if (window.electron) {
-      await window.electron.toggleFleet(newState);
+    try {
+      await api.toggleFleet(newState);
       onShowToast(newState ? 'Auto-Pilot Engine Enabled! It will now process jobs automatically.' : 'Auto-Pilot Engine Disabled.', 'success');
+    } catch (err) {
+      console.error(err);
+      onShowToast('Failed to toggle Auto-Pilot Engine', 'error');
     }
   };
 
@@ -141,7 +151,7 @@ export const AutoRepin: React.FC<AutoRepinProps> = ({ accounts, onShowToast }) =
       
       api.startRepinJob(id).then(() => {
         fetchJobs();
-      }).catch(e => {
+      }).catch((e: any) => {
         onShowToast(`Repin job failed: ${e.message}`, 'error');
         fetchJobs();
       });

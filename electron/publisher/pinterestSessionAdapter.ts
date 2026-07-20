@@ -199,10 +199,15 @@ export class PinterestSessionAdapter {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
 
     const launchOptions: any = {
-      headless: true,
+      headless: false, // Must be false for Windows packaged environment compatibility
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
+      args: [
+        '--disable-blink-features=AutomationControlled', 
+        '--no-sandbox', 
+        '--disable-gpu',
+        '--window-position=-32000,-32000' // Positions window offscreen
+      ]
     };
 
     let context: BrowserContext | null = null;
@@ -325,10 +330,15 @@ export class PinterestSessionAdapter {
     const fpLaunchOpts = FingerprintManager.toLaunchOptions(fingerprint);
 
     const launchOptions: any = {
-      headless: true,
+      headless: false, // Must be false for Windows packaged environment compatibility
       ...fpLaunchOpts,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu'],
+      args: [
+        '--disable-blink-features=AutomationControlled', 
+        '--no-sandbox', 
+        '--disable-gpu',
+        '--window-position=-32000,-32000' // Positions window offscreen
+      ],
     };
 
     let context: BrowserContext | null = null;

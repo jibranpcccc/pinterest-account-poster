@@ -139,12 +139,48 @@ export class JsonDriver implements DbDriver {
     if (cleanSql.includes('select * from repin_jobs')) {
       let repin_jobs = [...this.state.repin_jobs];
       if (cleanSql.includes('where id = ?')) {
-        const id = params[0];
-        repin_jobs = repin_jobs.filter(r => r.id === id);
+        const idIndex = cleanSql.indexOf('id = ?');
+        const statusIndex = cleanSql.indexOf('status = ?');
+        if (statusIndex !== -1 && statusIndex < idIndex) {
+          const id = params[1];
+          repin_jobs = repin_jobs.filter(r => r.id === id);
+        } else {
+          const id = params[0];
+          repin_jobs = repin_jobs.filter(r => r.id === id);
+        }
       }
+
+      const statusMatch = cleanSql.match(/status\s*=\s*['"]([^'"]+)['"]/);
+      if (statusMatch) {
+        const statusValue = statusMatch[1];
+        repin_jobs = repin_jobs.filter(r => r.status === statusValue);
+      } else if (cleanSql.includes('status = ?')) {
+        const idIndex = cleanSql.indexOf('id = ?');
+        const statusIndex = cleanSql.indexOf('status = ?');
+        if (idIndex !== -1 && statusIndex !== -1) {
+          if (idIndex < statusIndex) {
+            const status = params[1];
+            repin_jobs = repin_jobs.filter(r => r.status === status);
+          } else {
+            const status = params[0];
+            repin_jobs = repin_jobs.filter(r => r.status === status);
+          }
+        } else {
+          const status = params[0];
+          repin_jobs = repin_jobs.filter(r => r.status === status);
+        }
+      }
+
       if (cleanSql.includes('order by createdat asc')) {
         repin_jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       }
+
+      const limitMatch = cleanSql.match(/limit\s+(\d+)/);
+      if (limitMatch) {
+        const limit = parseInt(limitMatch[1], 10);
+        repin_jobs = repin_jobs.slice(0, limit);
+      }
+
       return repin_jobs as T[];
     }
 

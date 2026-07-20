@@ -48,7 +48,7 @@ export interface QueueJob {
   destinationUrl: string;
   altText: string;
   notes: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'scheduled';
   errorMessage?: string | null;
   screenshotPath?: string | null;
   livePinUrl?: string | null;

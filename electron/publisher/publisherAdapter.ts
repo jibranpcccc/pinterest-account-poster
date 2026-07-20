@@ -3,6 +3,7 @@ import { PinterestSessionAdapter } from './pinterestSessionAdapter';
 import { BoardResolver } from './boardResolver';
 import { PublishExecutor, PublishResult } from './publishExecutor';
 import { QueueJob, Account } from '../types';
+import { Notification } from 'electron';
 
 export class PublisherAdapter {
   private db: DbManager;
@@ -14,6 +15,22 @@ export class PublisherAdapter {
   private activeJobsList: string[] = [];
   private currentExecutingIndex = 0;
   private executionActive = false;
+
+  private onStatusChangeCallbacks: (() => void)[] = [];
+
+  public registerOnStatusChange(cb: () => void) {
+    this.onStatusChangeCallbacks.push(cb);
+  }
+
+  private notifyStatusChange() {
+    for (const cb of this.onStatusChangeCallbacks) {
+      try {
+        cb();
+      } catch (e) {
+        console.error('Error in status change callback:', e);
+      }
+    }
+  }
 
   constructor(db: DbManager) {
     this.db = db;
@@ -32,6 +49,10 @@ export class PublisherAdapter {
 
   public getExecutor() {
     return this.executor;
+  }
+
+  public isQueueActive(): boolean {
+    return this.executionActive;
   }
 
   public pauseQueue() {
@@ -56,6 +77,7 @@ export class PublisherAdapter {
           status: 'failed',
           errorMessage: 'Queue stopped by user.'
         });
+        this.notifyStatusChange();
       }
     }
   }
@@ -102,6 +124,7 @@ export class PublisherAdapter {
         status: 'running',
         startedAt: new Date().toISOString()
       });
+      this.notifyStatusChange();
 
       // Load account details
       const accounts = await this.db.query<Account>('SELECT * FROM accounts WHERE id = ?', [job.accountId]);
@@ -111,6 +134,7 @@ export class PublisherAdapter {
           status: 'failed',
           errorMessage: 'Account not found locally.'
         });
+        this.notifyStatusChange();
         failedCount++;
         onProgress({
           jobId, status: 'failed', progress: 100, message: 'Account not found',
@@ -161,6 +185,22 @@ export class PublisherAdapter {
           livePinUrl: result.livePinUrl || null,
           completedAt: result.completedAt
         });
+        this.notifyStatusChange();
+
+        // Show native notification if enabled
+        if (settings.showNotificationOnPost === true && Notification.isSupported()) {
+          try {
+            const notif = new Notification({
+              title: 'Pinterest Pin Publisher',
+              body: status === 'completed'
+                ? `✅ Pin posted to ${job.boardName || 'Pinterest'}`
+                : `❌ Failed: ${result.message || 'Unknown error'}`
+            });
+            notif.show();
+          } catch (notifErr) {
+            console.error('Failed to trigger native OS notification:', notifErr);
+          }
+        }
 
         if (status === 'completed') {
           completedCount++;
@@ -241,6 +281,7 @@ export class PublisherAdapter {
           status: 'failed',
           errorMessage: err.message
         });
+        this.notifyStatusChange();
 
         onProgress({
           jobId, status: 'failed', progress: 100, message: err.message,
@@ -249,6 +290,26 @@ export class PublisherAdapter {
 
         if (settings.continueAfterFailure === false) {
           this.executionActive = false;
+        }
+      }
+    }
+
+    const stoppedEarly = this.currentExecutingIndex < totalCount - 1 || !this.executionActive;
+    if (stoppedEarly) {
+      for (const jobId of jobIds) {
+        const jobs = await this.db.query<QueueJob>('SELECT * FROM queue_jobs WHERE id = ?', [jobId]);
+        if (jobs.length > 0) {
+          const job = jobs[0];
+          if (job.status === 'running') {
+            const hasSchedule = !!(job.scheduledDate && job.scheduledTime);
+            await this.db.saveQueueJob({
+              ...job,
+              status: hasSchedule ? 'scheduled' : 'pending',
+              errorMessage: 'Queue execution was stopped/interrupted before this job could be processed.'
+            });
+            this.notifyStatusChange();
+            await this.db.addLog('info', `Reset unprocessed job ${job.id} from running back to ${hasSchedule ? 'scheduled' : 'pending'}.`);
+          }
         }
       }
     }

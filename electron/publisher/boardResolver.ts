@@ -31,12 +31,17 @@ export class BoardResolver {
     console.log(`[Fingerprint] Board scraper using: ${FingerprintManager.getSummary(fingerprint)}`);
 
     const launchOptions: any = {
-      headless: true, // Run headlessly for background scraping
+      headless: false, // Run headfully to prevent silent Chromium crashes on Windows packaged apps
       userAgent: fpOpts.userAgent,
       locale: fpOpts.locale,
       timezoneId: fpOpts.timezoneId,
       executablePath: getChromiumExecutablePath(),
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-gpu']
+      args: [
+        '--disable-blink-features=AutomationControlled', 
+        '--no-sandbox', 
+        '--disable-gpu',
+        '--window-position=-32000,-32000' // Positions window offscreen for background execution
+      ]
     };
 
     let context: BrowserContext | null = null;

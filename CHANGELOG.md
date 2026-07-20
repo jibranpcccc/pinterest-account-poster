@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.44] - 2026-07-20
+### Added
+- **Background Scheduler Engine**: Integrated a Node.js `setInterval` background scheduler (running every 60 seconds) in the Electron main process to query, identify, and fire scheduled pins automatically when their target time arrives.
+- **Windows Auto-Start**: Exposed startup registration handlers (`sys:setStartup`, `sys:getStartup`) that toggle "Launch at Windows startup" using Electron's `app.setLoginItemSettings()`.
+- **System Tray Silent Launch**: Configured the app to launch hidden in the Windows system tray on boot. The tray icon features right-click Open/Quit options and a dynamic status tooltip showing queue metrics.
+- **Desktop Toast Notifications**: Added native OS notification bubbles that trigger when a scheduled pin is successfully posted or fails.
+- **Smart Bulk Distributor**: Re-engineered the bulk schedule distribution algorithm with the following constraints:
+  - Enforced a daily limit of **7 posts per board** max.
+  - Enforced a daily limit of **40 posts per account** max.
+  - Interleaved selected pending pins round-robin by board name (Board A -> Board B -> Board C -> Board A...) for equal representation.
+  - Added **Dynamic Date Extension**: Automatically stretches the date range if the selected timeline is too narrow to fit pins under the daily board/account limits.
+  - Improved collision checks (forcing a minimum 30-minute separation per account).
+- **Scheduled Queue UI**:
+  - Added a dedicated "Scheduled" tab to show scheduled jobs sorted chronologically.
+  - Added live countdown timers refreshing every second (*"Posts in Xd Xh Xm"*).
+  - Added inline date/time editors to update scheduled slots directly from the table.
+  - Added an "Unschedule" action to revert jobs back to `pending` status.
+- **E2E & Stress Test Verification**: Overhauled testing to achieve **50/50 Playwright E2E cases** passed, including boundary condition stress tests for date timezone overlaps, DST transitions, and load spikes.
+
 ## [1.0.10] - 2026-07-08
 ### Added
 - **Automated CI/CD**: Added a GitHub Actions workflow (`.github/workflows/release.yml`) to automatically build and publish the Windows `.exe` executable to GitHub Releases.
