@@ -36,8 +36,34 @@ const parseDateTimeToMs = (dateStr: string, timeStr: string) => {
     minutes = parseInt(timeParts[1]);
   }
   
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, hours, minutes).getTime();
+  // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
+  const dateParts = dateStr.split(/[-/]/).map(Number);
+  let year = NaN, month = NaN, day = NaN;
+
+  if (dateParts.length === 3) {
+    if (dateParts[0] > 1000) {
+      // YYYY-MM-DD or YYYY/MM/DD
+      year = dateParts[0];
+      month = dateParts[1];
+      day = dateParts[2];
+    } else if (dateParts[2] > 1000) {
+      // MM-DD-YYYY or DD-MM-YYYY
+      if (dateParts[0] > 12) {
+        day = dateParts[0];
+        month = dateParts[1];
+      } else {
+        month = dateParts[0];
+        day = dateParts[1];
+      }
+      year = dateParts[2];
+    }
+  }
+
+  const d = !isNaN(year) && !isNaN(month) && !isNaN(day)
+    ? new Date(year, month - 1, day, hours, minutes)
+    : new Date(`${dateStr} ${timeStr}`);
+
+  return d.getTime();
 };
 
 const convertMsToDateTime = (ms: number) => {

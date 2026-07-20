@@ -7,7 +7,6 @@ const assert = require('assert').strict;
 
 // From Queue.tsx:
 const parseDateTimeToMs = (dateStr, timeStr) => {
-  if (!dateStr || !timeStr) return NaN;
   const timeClean = timeStr.trim().toUpperCase();
   let hours = 0;
   let minutes = 0;
@@ -25,8 +24,32 @@ const parseDateTimeToMs = (dateStr, timeStr) => {
     minutes = parseInt(timeParts[1], 10);
   }
   
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, hours, minutes).getTime();
+  // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
+  const dateParts = dateStr.split(/[-/]/).map(Number);
+  let year = NaN, month = NaN, day = NaN;
+
+  if (dateParts.length === 3) {
+    if (dateParts[0] > 1000) {
+      year = dateParts[0];
+      month = dateParts[1];
+      day = dateParts[2];
+    } else if (dateParts[2] > 1000) {
+      if (dateParts[0] > 12) {
+        day = dateParts[0];
+        month = dateParts[1];
+      } else {
+        month = dateParts[0];
+        day = dateParts[1];
+      }
+      year = dateParts[2];
+    }
+  }
+
+  const d = !isNaN(year) && !isNaN(month) && !isNaN(day)
+    ? new Date(year, month - 1, day, hours, minutes)
+    : new Date(`${dateStr} ${timeStr}`);
+
+  return d.getTime();
 };
 
 const convertMsToDateTime = (ms) => {
@@ -141,7 +164,11 @@ function runTests() {
     { date: '2026-07-16', time: '12:01 AM', expectedHour: 0, expectedMinute: 1 },
     { date: '2026-07-16', time: '12:01 PM', expectedHour: 12, expectedMinute: 1 },
     { date: '2026-07-16', time: '01:30 PM', expectedHour: 13, expectedMinute: 30 },
-    { date: '2026-07-16', time: '01:30 AM', expectedHour: 1, expectedMinute: 30 }
+    { date: '2026-07-16', time: '01:30 AM', expectedHour: 1, expectedMinute: 30 },
+    // Slash and US/locale date formats
+    { date: '07/16/2026', time: '01:30 PM', expectedHour: 13, expectedMinute: 30 },
+    { date: '16/07/2026', time: '01:30 PM', expectedHour: 13, expectedMinute: 30 },
+    { date: '2026/07/16', time: '01:30 PM', expectedHour: 13, expectedMinute: 30 }
   ];
 
   for (const tc of parseTestCases) {
@@ -162,11 +189,34 @@ function runTests() {
       const ms = parseDateTimeToMs(tc.date, tc.time);
       const converted = convertMsToDateTime(ms);
       
-      // Standardize the hour formatting for comparison (e.g. pad single-digit hour if converted has it padded)
       const expectedTimeNormalized = tc.time.trim().toUpperCase().replace(/^(\d):/, '0$1:');
       const actualTimeNormalized = converted.timeStr.trim().toUpperCase().replace(/^(\d):/, '0$1:');
       
-      assert.strictEqual(converted.dateStr, tc.date, `Date mismatch in convertMsToDateTime for ${tc.time}`);
+      // Standardize the expected date to YYYY-MM-DD for symmetry check
+      const dateParts = tc.date.split(/[-/]/);
+      let expectedDate = tc.date;
+      if (dateParts.length === 3) {
+        let year = NaN, month = NaN, day = NaN;
+        if (dateParts[0].length === 4) {
+          year = Number(dateParts[0]);
+          month = Number(dateParts[1]);
+          day = Number(dateParts[2]);
+        } else if (dateParts[2].length === 4) {
+          if (Number(dateParts[0]) > 12) {
+            day = Number(dateParts[0]);
+            month = Number(dateParts[1]);
+          } else {
+            month = Number(dateParts[0]);
+            day = Number(dateParts[1]);
+          }
+          year = Number(dateParts[2]);
+        }
+        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+          expectedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+      }
+      
+      assert.strictEqual(converted.dateStr, expectedDate, `Date mismatch in convertMsToDateTime for ${tc.time}`);
       assert.strictEqual(actualTimeNormalized, expectedTimeNormalized, `Time mismatch in convertMsToDateTime for ${tc.time}`);
       console.log(`✅ Symmetry: "${tc.date} ${tc.time}" -> MS -> "${converted.dateStr} ${converted.timeStr}"`);
     }

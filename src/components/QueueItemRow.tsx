@@ -47,8 +47,34 @@ const getCountdownText = (dateStr: string, timeStr: string) => {
     hour = parseInt(parts[0], 10) || 0;
     min = parseInt(parts[1], 10) || 0;
   }
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const scheduledDate = new Date(year, month - 1, day, hour, min);
+
+  // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
+  const dateParts = dateStr.split(/[-/]/).map(Number);
+  let year = NaN, month = NaN, day = NaN;
+
+  if (dateParts.length === 3) {
+    if (dateParts[0] > 1000) {
+      // YYYY-MM-DD or YYYY/MM/DD
+      year = dateParts[0];
+      month = dateParts[1];
+      day = dateParts[2];
+    } else if (dateParts[2] > 1000) {
+      // MM-DD-YYYY or DD-MM-YYYY
+      if (dateParts[0] > 12) {
+        day = dateParts[0];
+        month = dateParts[1];
+      } else {
+        month = dateParts[0];
+        day = dateParts[1];
+      }
+      year = dateParts[2];
+    }
+  }
+
+  const scheduledDate = !isNaN(year) && !isNaN(month) && !isNaN(day)
+    ? new Date(year, month - 1, day, hour, min)
+    : new Date(`${dateStr} ${timeStr}`);
+
   const now = new Date();
   const diffMs = scheduledDate.getTime() - now.getTime();
   if (diffMs <= 0) {

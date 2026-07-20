@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.45] - 2026-07-20
+### Fixed
+- **Timezone and Locale String Parsing**: Fixed a critical background scheduler bug where dates saved in US formatting (e.g. `MM/DD/YYYY` or `MM/DD/YYYY hh:mm AM/PM` with slash separators) would return `Invalid Date` on the Electron main process due to strict ISO `YYYY-MM-DDTHH:mm:ss` constructors.
+- **Robust Multi-Locale Parser**: Replaced all string-based Date parsing with a format-agnostic, timezone-neutral parser using integer date components (`new Date(year, month - 1, day, hour, minute, second)`), standardizing locale handling across the renderer UI (`Queue.tsx`, `QueueItemRow.tsx`) and main process (`main.ts`).
+- **Live Overdue Status**: Resolved a bug where countdown timers would display `"Posts in 0m"` or `"NaNm"` on timezone offset shifts, ensuring overdue items correctly display `"Overdue — posting soon"`.
+
 ## [1.0.44] - 2026-07-20
 ### Added
 - **Background Scheduler Engine**: Integrated a Node.js `setInterval` background scheduler (running every 60 seconds) in the Electron main process to query, identify, and fire scheduled pins automatically when their target time arrives.

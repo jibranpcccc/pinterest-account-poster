@@ -91,31 +91,56 @@ export function parseScheduledDateTime(dateStr: string, timeStr: string): Date {
   const timeLower = timeTrimmed.toLowerCase();
   const isAmPm = timeLower.endsWith('am') || timeLower.endsWith('pm');
   
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+
   if (isAmPm) {
     const isPm = timeLower.endsWith('pm');
     const timeWithoutAmPm = timeTrimmed.slice(0, -2).trim();
     const parts = timeWithoutAmPm.split(':');
-    let hour = parseInt(parts[0], 10);
-    let minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-    let second = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+    hour = parseInt(parts[0], 10);
+    minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    second = parts.length > 2 ? parseInt(parts[2], 10) : 0;
     
-    if (!isNaN(hour) && !isNaN(minute) && !isNaN(second)) {
-      if (isPm) {
-        if (hour !== 12) {
-          hour += 12;
-        }
+    if (isPm && hour !== 12) hour += 12;
+    if (!isPm && hour === 12) hour = 0;
+  } else {
+    const parts = timeTrimmed.split(':');
+    hour = parseInt(parts[0], 10) || 0;
+    minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+    second = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+  }
+
+  // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
+  const dateParts = dateStr.split(/[-/]/).map(Number);
+  let year = NaN, month = NaN, day = NaN;
+
+  if (dateParts.length === 3) {
+    if (dateParts[0] > 1000) {
+      // YYYY-MM-DD or YYYY/MM/DD
+      year = dateParts[0];
+      month = dateParts[1];
+      day = dateParts[2];
+    } else if (dateParts[2] > 1000) {
+      // MM-DD-YYYY or DD-MM-YYYY
+      if (dateParts[0] > 12) {
+        day = dateParts[0];
+        month = dateParts[1];
       } else {
-        if (hour === 12) {
-          hour = 0;
-        }
+        month = dateParts[0];
+        day = dateParts[1];
       }
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const formattedTime = `${pad(hour)}:${pad(minute)}:${pad(second)}`;
-      return new Date(`${dateStr}T${formattedTime}`);
+      year = dateParts[2];
     }
   }
-  
-  return new Date(`${dateStr}T${timeTrimmed}`);
+
+  if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+    return new Date(year, month - 1, day, hour, minute, second);
+  }
+
+  // Fallback to default parsing
+  return new Date(`${dateStr} ${timeTrimmed}`);
 }
 
 function startScheduler() {

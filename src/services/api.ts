@@ -415,7 +415,32 @@ const getApiMethod = (methodName: string) => {
                   hour = parseInt(parts[0], 10);
                   minute = parts.length > 1 ? parseInt(parts[1], 10) : 0;
                 }
-                const jobTime = new Date(`${job.scheduledDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+
+                // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
+                const dateParts = job.scheduledDate.split(/[-/]/).map(Number);
+                let year = NaN, month = NaN, day = NaN;
+
+                if (dateParts.length === 3) {
+                  if (dateParts[0] > 1000) {
+                    year = dateParts[0];
+                    month = dateParts[1];
+                    day = dateParts[2];
+                  } else if (dateParts[2] > 1000) {
+                    if (dateParts[0] > 12) {
+                      day = dateParts[0];
+                      month = dateParts[1];
+                    } else {
+                      month = dateParts[0];
+                      day = dateParts[1];
+                    }
+                    year = dateParts[2];
+                  }
+                }
+
+                const jobTime = !isNaN(year) && !isNaN(month) && !isNaN(day)
+                  ? new Date(year, month - 1, day, hour, minute, 0)
+                  : new Date(`${job.scheduledDate} ${job.scheduledTime}`);
+
                 const ms = jobTime.getTime();
                 if (!isNaN(ms) && ms < earliestMs) {
                   earliestMs = ms;
