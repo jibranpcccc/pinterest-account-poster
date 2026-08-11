@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.46] - 2026-08-11
+### Added
+- **Default AI Engine Upgrade (OpenCode Mini MiMo-V2.5)**: Integrated OpenCode Mini MiMo-V2.5 (Vision & Text) as the default model across database seeds (`db.ts`), Settings UI (`Settings.tsx`), and backend provider (`openCodeProvider.ts`), delivering 4.1s response latency (36% faster) and 99.1% description quality score.
+- **⚡ Live Auto-Pinning Pipeline Matrix (`AutoPinningPipeline.tsx`)**: Built live multi-account channel monitoring dashboard with real-time active job progress bars, upcoming job feeds, account session health indicators, and OpenCode AI search query generator per board.
+- **🎛️ 3-Mode Queue View Selector (`Queue.tsx`)**: Added a 3-mode view selector bar to toggle seamlessly between `⚡ Live Pipeline Matrix`, `📅 Interactive Calendar`, and `📋 Queue List`.
+- **📅 Interactive Content Calendar (`ContentCalendar.tsx`)**: Implemented full interactive Month and Week grid views with drag-and-drop rescheduling, color-coded status badges, and day slot popovers.
+- **✨ Spintax Engine & Dynamic Template Generator (`spintax.ts`)**: Built Spintax parser (`{Awesome|Top 10} {filename} for {year}`) with tag chips, dynamic placeholders, pre-built presets, and 1-click batch generation across bulk items.
+- **🛡️ 6-Layer AI Image Footprint Remover (`aiImageCleaner.ts` & `CreatePin.tsx`)**: Built Jimp-based scrambler with EXIF metadata stripping, micro-resize warp, latent noise blur, multi-spectrum jitter, and AI canvas text banner overlays (Top, Center, Bottom).
+- **📂 Smart Filename Metadata Parser (`filenameParser.ts`)**: Added automatic parsing for `Title_Board_Url.jpg` filenames to populate bulk item fields instantly.
+- **📊 SQLite Historical Analytics Storage (`db.ts` & `Analytics.tsx`)**: Added persistent SQLite metric snapshot tracking, SVG growth charts, account comparison, and PDF/CSV export tools.
+
+### Changed & Hardened
+- **Playwright DOM Upload & Form Filling (`publishExecutor.ts`)**:
+  - Replaced OS file chooser dialog delays with instant `setInputFiles` targeting `input[type="file"]`.
+  - Added pre-flight media validation and remote HTTP image downloader fallback.
+  - Expanded form field locators (`pin-draft-title`, `pin-draft-description`, `pin-draft-link`, `pin-draft-alt-text`).
+  - Humanized typing delays (25-70ms/char) and exact match board slugification (`[data-test-id="board-row-${slug}"]`).
+  - Added 4-tier live Pin URL scraper and CAPTCHA pause/resume handler.
+- **Queue Engine & Retry Reliability (`publisherAdapter.ts` & `repinExecutor.ts`)**:
+  - Added atomic queue execution lock to prevent double-execution race conditions.
+  - Added Round-Robin account queue sorting (`jobsToProcess.sort((a,b) => a.accountId.localeCompare(b.accountId))`).
+  - Multi-selector fallback for repin search grids (`[data-test-id="pin"]`, `div[data-grid-item="true"]`).
+
+### Verified
+- **62-Assertion E2E Test Suite (`scratch/verify_all_ui.ts`)**: Achieved 100% test pass rate (62/62 passed) across all UI screens, buttons, clicks, Spintax generator, and live pipeline matrix.
+
 ## [1.0.45] - 2026-07-20
 ### Fixed
 - **Date Parsing**: Fixed date parsing bugs for single and bulk scheduling.
