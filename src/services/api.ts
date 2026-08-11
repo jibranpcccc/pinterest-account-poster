@@ -1,4 +1,4 @@
-import { Account, Board, Draft, QueueJob, LogFilters, Log } from '../types';
+import { Account, Board, Draft, QueueJob, LogFilters, Log, AnalyticsSnapshot } from '../types';
 
 declare global {
   interface Window {
@@ -9,6 +9,10 @@ declare global {
       openPinterestSession: (accountId: string) => Promise<boolean>;
       verifyPinterestSession: (accountId: string) => Promise<boolean>;
       fetchAnalytics: (accountId: string) => Promise<any>;
+      getAnalyticsHistory: (accountId?: string) => Promise<AnalyticsSnapshot[]>;
+      saveAnalyticsSnapshot: (snapshot: Partial<AnalyticsSnapshot>) => Promise<AnalyticsSnapshot>;
+      seedAnalyticsHistory: (accountId: string) => Promise<AnalyticsSnapshot[]>;
+
 
       getRepinJobs: () => Promise<any[]>;
       saveRepinJob: (job: any) => Promise<any>;
@@ -53,6 +57,7 @@ declare global {
       onFleetJobUpdate: (cb: () => void) => () => void;
 
       callAI: (action: string, payload: any) => Promise<any>;
+      batchScrubImages: (items: any[], options: any) => Promise<Record<string, string>>;
 
       onQueueProgress: (callback: (event: any, data: any) => void) => void;
       onBrowserStatusChange: (callback: (event: any, data: any) => void) => void;
@@ -113,13 +118,75 @@ const mockStore = {
     aiEnabled: false,
     aiApiKey: '',
     aiBaseUrl: 'https://api.opencode.dev/v1',
-    aiModel: 'opencode-big-pickle',
+    aiModel: 'opencode-mimo-v2.5',
     aiTimeout: 30
   } as Record<string, any>,
   logs: [
     { level: 'info' as const, message: 'Pinterest Pin Publisher initialised.', createdAt: new Date().toISOString() }
-  ] as Log[]
+  ] as Log[],
+  analyticsHistory: [] as AnalyticsSnapshot[]
 };
+
+function parseNum(val: any): number {
+  if (typeof val === 'number') return val;
+  if (!val || typeof val !== 'string') return 0;
+  const cleaned = val.trim().toLowerCase().replace(/,/g, '');
+  const match = cleaned.match(/^([\d.]+)\s*([km])?$/);
+  if (!match) {
+    const num = parseFloat(cleaned.replace(/[^\d.]/g, ''));
+    return isNaN(num) ? 0 : Math.round(num);
+  }
+  const base = parseFloat(match[1]);
+  if (isNaN(base)) return 0;
+  if (match[2] === 'k') return Math.round(base * 1000);
+  if (match[2] === 'm') return Math.round(base * 1000000);
+  return Math.round(base);
+}
+
+function generateMockHistory(accountId: string): AnalyticsSnapshot[] {
+  const list: AnalyticsSnapshot[] = [];
+  const now = new Date();
+  let hash = 0;
+  for (let i = 0; i < accountId.length; i++) hash += accountId.charCodeAt(i);
+  const baseFollowers = 1850 + (hash % 2000);
+  const baseViews = 35000 + (hash % 40000);
+  const baseImpressions = 62000 + (hash % 60000);
+
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const snapshotDate = d.toISOString().split('T')[0];
+    const timestamp = d.toISOString();
+    const progress = (30 - i) / 30;
+
+    const followerGain = Math.floor(progress * 240 + Math.sin(i * 0.7) * 25);
+    const viewNoise = Math.floor(Math.sin(i * 0.9) * 3200 + Math.cos(i * 1.1) * 1500);
+    const impNoise = Math.floor(Math.cos(i * 0.5) * 6500 + Math.sin(i * 0.8) * 3500);
+
+    const followers = Math.max(100, baseFollowers + followerGain);
+    const monthlyViews = Math.max(1000, baseViews + Math.floor(progress * 12000) + viewNoise);
+    const impressions = Math.max(2000, baseImpressions + Math.floor(progress * 22000) + impNoise);
+    const engagements = Math.floor(impressions * (0.052 + (i % 4) * 0.004));
+    const outboundClicks = Math.floor(engagements * 0.41);
+    const saves = Math.floor(engagements * 0.46);
+
+    list.push({
+      id: `mock_snap_${accountId}_${snapshotDate}`,
+      accountId,
+      followers,
+      monthlyViews,
+      impressions,
+      engagements,
+      outboundClicks,
+      saves,
+      followersRaw: followers >= 1000 ? `${(followers / 1000).toFixed(1)}k` : String(followers),
+      monthlyViewsRaw: monthlyViews >= 1000 ? `${(monthlyViews / 1000).toFixed(1)}k` : String(monthlyViews),
+      timestamp,
+      snapshotDate
+    });
+  }
+  return list;
+}
 
 const getApiMethod = (methodName: string) => {
   return (...args: any[]) => {
@@ -160,6 +227,7 @@ const getApiMethod = (methodName: string) => {
       deleteAccount: async (id: string) => {
         mockStore.accounts = mockStore.accounts.filter(a => a.id !== id);
         mockStore.boards = mockStore.boards.filter(b => b.accountId !== id);
+        mockStore.analyticsHistory = mockStore.analyticsHistory.filter(h => h.accountId !== id);
       },
       openPinterestSession: async (id: string) => {
         const idx = mockStore.accounts.findIndex(a => a.id === id);
@@ -173,6 +241,83 @@ const getApiMethod = (methodName: string) => {
         const idx = mockStore.accounts.findIndex(a => a.id === id);
         return idx !== -1 ? mockStore.accounts[idx].sessionStatus === 'connected' : false;
       },
+      fetchAnalytics: async (accountId: string) => {
+        const history = mockApis.getAnalyticsHistory ? await mockApis.getAnalyticsHistory(accountId) : [];
+        const latest = history[history.length - 1] || {
+          followers: 2450,
+          monthlyViews: 48200,
+          impressions: 89300,
+          engagements: 4620,
+          outboundClicks: 1890,
+          saves: 2130
+        };
+
+        const updated: AnalyticsSnapshot = {
+          id: `snap_${Date.now()}`,
+          accountId,
+          followers: latest.followers + Math.floor(Math.random() * 15 + 5),
+          monthlyViews: latest.monthlyViews + Math.floor(Math.random() * 500 + 100),
+          impressions: latest.impressions + Math.floor(Math.random() * 1200 + 300),
+          engagements: latest.engagements + Math.floor(Math.random() * 80 + 20),
+          outboundClicks: latest.outboundClicks + Math.floor(Math.random() * 35 + 10),
+          saves: latest.saves + Math.floor(Math.random() * 40 + 10),
+          followersRaw: `${((latest.followers + 10) / 1000).toFixed(1)}k`,
+          monthlyViewsRaw: `${((latest.monthlyViews + 300) / 1000).toFixed(1)}k`,
+          timestamp: new Date().toISOString(),
+          snapshotDate: new Date().toISOString().split('T')[0]
+        };
+
+        mockStore.analyticsHistory.push(updated);
+        return {
+          accountId,
+          followers: updated.followersRaw,
+          monthlyViews: updated.monthlyViewsRaw,
+          impressions: String(updated.impressions),
+          engagements: String(updated.engagements),
+          outboundClicks: String(updated.outboundClicks),
+          saves: String(updated.saves),
+          timestamp: updated.timestamp
+        };
+      },
+      getAnalyticsHistory: async (accountId?: string) => {
+        if (accountId) {
+          let list = mockStore.analyticsHistory.filter(h => h.accountId === accountId);
+          if (list.length === 0) {
+            const seeded = generateMockHistory(accountId);
+            mockStore.analyticsHistory.push(...seeded);
+            list = seeded;
+          }
+          return list.sort((a, b) => a.snapshotDate.localeCompare(b.snapshotDate));
+        }
+        return mockStore.analyticsHistory;
+      },
+      saveAnalyticsSnapshot: async (snap: Partial<AnalyticsSnapshot>) => {
+        const id = snap.id || `snap_${Date.now()}`;
+        const followers = parseNum(snap.followers ?? snap.followersRaw);
+        const monthlyViews = parseNum(snap.monthlyViews ?? snap.monthlyViewsRaw);
+        const item: AnalyticsSnapshot = {
+          id,
+          accountId: snap.accountId || 'mock-acc-1',
+          followers,
+          monthlyViews,
+          impressions: snap.impressions || 0,
+          engagements: snap.engagements || 0,
+          outboundClicks: snap.outboundClicks || 0,
+          saves: snap.saves || 0,
+          followersRaw: snap.followersRaw || String(followers),
+          monthlyViewsRaw: snap.monthlyViewsRaw || String(monthlyViews),
+          timestamp: snap.timestamp || new Date().toISOString(),
+          snapshotDate: snap.snapshotDate || new Date().toISOString().split('T')[0]
+        };
+        mockStore.analyticsHistory.push(item);
+        return item;
+      },
+      seedAnalyticsHistory: async (accountId: string) => {
+        const seeded = generateMockHistory(accountId);
+        mockStore.analyticsHistory.push(...seeded);
+        return seeded;
+      },
+
       getBoards: async (accountId: string) => {
         return mockStore.boards.filter(b => b.accountId === accountId);
       },
@@ -379,6 +524,14 @@ const getApiMethod = (methodName: string) => {
           return { isValid: true, warnings: [] };
         }
         return null;
+      },
+      batchScrubImages: async (items: any[], _options: any) => {
+        console.log('Mock batchScrubImages requested for', items.length, 'items');
+        const res: Record<string, string> = {};
+        for (const item of items) {
+          res[item.imagePath] = item.imagePath;
+        }
+        return res;
       },
       onQueueProgress: () => {},
       onBrowserStatusChange: () => {},

@@ -21,7 +21,7 @@ export const Logs: React.FC<LogsProps> = ({
 }) => {
   const [levelFilter, setLevelFilter] = useState<'' | 'info' | 'warn' | 'error'>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [localLogs, setLocalLogs] = useState<Log[]>([]);
+  const [localLogs, setLocalLogs] = useState<Log[]>(logs || []);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchLogsFiltered = async () => {

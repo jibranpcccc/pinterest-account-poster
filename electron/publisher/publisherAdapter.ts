@@ -381,6 +381,7 @@ export class PublisherAdapter {
       boardName: job.boardName,
       status: 'completed',
       message: 'Published successfully.',
+      livePinUrl: `https://www.pinterest.com/pin/mock-${Date.now()}/`,
       startedAt,
       completedAt
     };

@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { QueueItemRow } from '../components/QueueItemRow';
-import { QueueJob, Account, QueueProgressData } from '../types';
+import { AutoPinningPipeline } from '../components/AutoPinningPipeline';
+import { ContentCalendar } from '../components/ContentCalendar';
+import { QueueJob, Account, QueueProgressData, Board } from '../types';
 import { 
   Play, Pause, Square, Trash2, ListOrdered, 
-  RefreshCw, Clock
+  RefreshCw, Clock, RotateCcw, AlertTriangle, CheckSquare,
+  Edit3, Globe, Folder, Settings, Check, X, Sparkles, Layers, Sliders, Calendar, Activity
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Modal } from '../components/Modal';
@@ -104,23 +107,76 @@ export const Queue: React.FC<QueueProps> = ({
   const [queueSummary, setQueueSummary] = useState<QueueProgressData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [queueViewMode, setQueueViewMode] = useState<'pipeline' | 'list' | 'calendar'>('pipeline');
   const logRef = useRef<HTMLDivElement>(null);
 
-  // States for Bulk Scheduling
+  // Auto-Retry Settings State
+  const [autoRetryEnabled, setAutoRetryEnabled] = useState(false);
+  const [maxRetries, setMaxRetries] = useState(2);
+  const [retryDelayMinutes, setRetryDelayMinutes] = useState(5);
+  const [showAutoRetryPanel, setShowAutoRetryPanel] = useState(false);
+
+  // States for Board selection in batch editor
+  const [allBoards, setAllBoards] = useState<Board[]>([]);
+
+  // States for Multi-Select & Batch Operations
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [batchModalTab, setBatchModalTab] = useState<'field_editor' | 'distribution'>('field_editor');
+
+  // Batch Field Editor state
+  const [batchBoard, setBatchBoard] = useState('');
+  const [batchDestinationUrl, setBatchDestinationUrl] = useState('');
+  const [batchApplySchedule, setBatchApplySchedule] = useState(false);
+  const [batchScheduleDate, setBatchScheduleDate] = useState(getTodayDateString());
+  const [batchScheduleTime, setBatchScheduleTime] = useState('09:00');
+  const [isApplyingBatch, setIsApplyingBatch] = useState(false);
+
+  // Bulk Distribution state
   const [bulkStartDate, setBulkStartDate] = useState(getTodayDateString());
   const [bulkEndDate, setBulkEndDate] = useState(getTodayDateString());
   const [bulkPostsPerDay, setBulkPostsPerDay] = useState(2);
   const [bulkStartTime, setBulkStartTime] = useState('09:00');
   const [bulkSpreadWindow, setBulkSpreadWindow] = useState(4);
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [previewSlots, setPreviewSlots] = useState<{ jobId: string; title: string; accountNickname: string; date: string; time: string; }[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'queue' | 'scheduled' | 'published' | 'failed'>('queue');
   const [refreshCountdown, setRefreshCountdown] = useState(60);
 
+  // Fetch settings & boards on mount
+  useEffect(() => {
+    const loadSettingsAndBoards = async () => {
+      try {
+        const settings = await api.getSettings();
+        if (settings) {
+          if (settings.autoRetryEnabled !== undefined) setAutoRetryEnabled(!!settings.autoRetryEnabled);
+          if (settings.maxRetries !== undefined) setMaxRetries(Number(settings.maxRetries) || 2);
+          if (settings.retryDelayMinutes !== undefined) setRetryDelayMinutes(Number(settings.retryDelayMinutes) || 5);
+        }
+
+        // Fetch boards for all accounts
+        const boardsList: Board[] = [];
+        for (const acc of accounts) {
+          try {
+            const b = await api.getBoards(acc.id);
+            if (b && Array.isArray(b)) {
+              boardsList.push(...b);
+            }
+          } catch (e) {
+            console.error(`Failed to load boards for account ${acc.id}`, e);
+          }
+        }
+        setAllBoards(boardsList);
+      } catch (e) {
+        console.error('Failed to load initial Queue settings/boards', e);
+      }
+    };
+    loadSettingsAndBoards();
+  }, [accounts]);
+
+  // Keep countdown active
   useEffect(() => {
     const timer = setInterval(() => {
       setRefreshCountdown(prev => {
@@ -133,6 +189,60 @@ export const Queue: React.FC<QueueProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [onRefreshQueue]);
+
+  // Sync selected job IDs with the queue, keeping non-running items
+  useEffect(() => {
+    setSelectedJobIds(prev => prev.filter(id => queue.some(q => q.id === id && q.status !== 'running')));
+  }, [queue]);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedJobIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllVisible = () => {
+    const selectableVisible = filteredJobs.filter(j => j.status !== 'running');
+    const allSelected = selectableVisible.every(j => selectedJobIds.includes(j.id));
+    if (allSelected) {
+      // Unselect visible
+      const visibleIds = selectableVisible.map(j => j.id);
+      setSelectedJobIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      // Select all visible
+      const visibleIds = selectableVisible.map(j => j.id);
+      setSelectedJobIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  // Auto-retry settings persistence
+  const handleToggleAutoRetry = async (enabled: boolean) => {
+    setAutoRetryEnabled(enabled);
+    try {
+      await api.saveSetting('autoRetryEnabled', enabled);
+      onShowToast(`Auto-Retry ${enabled ? 'enabled' : 'disabled'}.`, 'info');
+    } catch (e: any) {
+      onShowToast(`Failed to update setting: ${e.message}`, 'error');
+    }
+  };
+
+  const handleChangeMaxRetries = async (val: number) => {
+    setMaxRetries(val);
+    try {
+      await api.saveSetting('maxRetries', val);
+    } catch (e: any) {
+      console.error('Failed to save maxRetries', e);
+    }
+  };
+
+  const handleChangeRetryDelay = async (val: number) => {
+    setRetryDelayMinutes(val);
+    try {
+      await api.saveSetting('retryDelayMinutes', val);
+    } catch (e: any) {
+      console.error('Failed to save retryDelayMinutes', e);
+    }
+  };
 
   const handleUpdateSchedule = async (id: string, date: string, time: string) => {
     const job = queue.find(q => q.id === id);
@@ -182,17 +292,142 @@ export const Queue: React.FC<QueueProps> = ({
     }
   };
 
-  // Sync selected job IDs with the queue, only keeping pending items
-  useEffect(() => {
-    setSelectedJobIds(prev => prev.filter(id => queue.some(q => q.id === id && q.status === 'pending')));
-  }, [queue]);
-
-  const handleToggleSelect = (id: string) => {
-    setSelectedJobIds(prev =>
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
+  // Retry All Failed Jobs action
+  const handleRetryAllFailed = async () => {
+    const targetFailed = queue.filter(q => q.status === 'failed');
+    if (targetFailed.length === 0) {
+      onShowToast('No failed jobs to retry.', 'info');
+      return;
+    }
+    try {
+      for (const job of targetFailed) {
+        await api.updateQueueJobStatus(job.id, 'pending');
+      }
+      onShowToast(`🎉 Reset ${targetFailed.length} failed job(s) to pending status!`, 'success');
+      await onRefreshQueue();
+    } catch (e: any) {
+      onShowToast(`Failed to retry failed jobs: ${e.message}`, 'error');
+    }
   };
 
+  // Batch Operations on Selected Items
+  const handleBatchRetrySelected = async () => {
+    const selectedFailed = queue.filter(q => selectedJobIds.includes(q.id) && q.status === 'failed');
+    if (selectedFailed.length === 0) {
+      onShowToast('No failed jobs among selected items.', 'warn');
+      return;
+    }
+    try {
+      for (const job of selectedFailed) {
+        await api.updateQueueJobStatus(job.id, 'pending');
+      }
+      onShowToast(`Reset ${selectedFailed.length} selected failed job(s) to pending.`, 'success');
+      await onRefreshQueue();
+    } catch (e: any) {
+      onShowToast(`Batch retry failed: ${e.message}`, 'error');
+    }
+  };
+
+  const handleBatchUnscheduleSelected = async () => {
+    const selectedScheduled = queue.filter(q => selectedJobIds.includes(q.id) && q.status === 'scheduled');
+    if (selectedScheduled.length === 0) {
+      onShowToast('No scheduled jobs among selected items.', 'warn');
+      return;
+    }
+    try {
+      for (const job of selectedScheduled) {
+        await api.saveQueueJob({
+          ...job,
+          status: 'pending',
+          scheduledDate: null,
+          scheduledTime: null
+        });
+      }
+      onShowToast(`Unscheduled ${selectedScheduled.length} selected job(s).`, 'success');
+      await onRefreshQueue();
+    } catch (e: any) {
+      onShowToast(`Batch unschedule failed: ${e.message}`, 'error');
+    }
+  };
+
+  const handleBatchDeleteSelected = async () => {
+    const targetIds = [...selectedJobIds];
+    if (targetIds.length === 0) return;
+    if (confirm(`Are you sure you want to remove ${targetIds.length} selected job(s) from the queue?`)) {
+      try {
+        for (const id of targetIds) {
+          await api.deleteQueueJob(id);
+        }
+        setSelectedJobIds([]);
+        onShowToast(`Deleted ${targetIds.length} job(s) from queue.`, 'success');
+        await onRefreshQueue();
+      } catch (e: any) {
+        onShowToast(`Batch delete failed: ${e.message}`, 'error');
+      }
+    }
+  };
+
+  // Batch Field Editor (change Board, Time, URL for 50+ items at once)
+  const handleApplyBatchFieldEdits = async () => {
+    const selectedJobs = queue.filter(j => selectedJobIds.includes(j.id) && j.status !== 'running');
+    if (selectedJobs.length === 0) {
+      onShowToast('No eligible jobs selected for batch update.', 'warn');
+      return;
+    }
+
+    if (!batchBoard.trim() && !batchDestinationUrl.trim() && !batchApplySchedule) {
+      onShowToast('Please specify at least one field (Board, URL, or Schedule) to update.', 'warn');
+      return;
+    }
+
+    setIsApplyingBatch(true);
+    let updatedCount = 0;
+    try {
+      // Format time string if schedule is set
+      let formattedTime = batchScheduleTime;
+      if (batchApplySchedule && batchScheduleTime) {
+        const [hStr, mStr] = batchScheduleTime.split(':');
+        let hour = parseInt(hStr, 10);
+        const minute = parseInt(mStr, 10);
+        if (!isNaN(hour) && !isNaN(minute)) {
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          hour = hour % 12;
+          hour = hour ? hour : 12;
+          formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${ampm}`;
+        }
+      }
+
+      for (const job of selectedJobs) {
+        const updated: QueueJob = { ...job };
+
+        if (batchBoard.trim()) {
+          updated.boardName = batchBoard.trim();
+        }
+        if (batchDestinationUrl.trim()) {
+          updated.destinationUrl = batchDestinationUrl.trim();
+        }
+        if (batchApplySchedule) {
+          updated.scheduledDate = batchScheduleDate;
+          updated.scheduledTime = formattedTime;
+          updated.status = 'scheduled';
+        }
+
+        await api.saveQueueJob(updated);
+        updatedCount++;
+      }
+
+      onShowToast(`🎉 Successfully updated ${updatedCount} job(s)!`, 'success');
+      setShowBulkModal(false);
+      setSelectedJobIds([]);
+      await onRefreshQueue();
+    } catch (e: any) {
+      onShowToast(`Batch update failed: ${e.message}`, 'error');
+    } finally {
+      setIsApplyingBatch(false);
+    }
+  };
+
+  // Bulk Scheduling Distribution Generator
   const handleGenerateBulkSchedule = async () => {
     if (bulkPostsPerDay < 1 || bulkPostsPerDay > 40) {
       onShowToast('Posts per day must be between 1 and 40.', 'warn');
@@ -230,9 +465,9 @@ export const Queue: React.FC<QueueProps> = ({
       return dates[index];
     };
 
-    const selectedJobs = queue.filter(j => selectedJobIds.includes(j.id) && j.status === 'pending');
+    const selectedJobs = queue.filter(j => selectedJobIds.includes(j.id) && j.status !== 'running');
     if (selectedJobs.length === 0) {
-      onShowToast('No pending jobs selected.', 'error');
+      onShowToast('No eligible jobs selected for schedule distribution.', 'error');
       return;
     }
 
@@ -263,7 +498,7 @@ export const Queue: React.FC<QueueProps> = ({
     for (const accountId in jobsByAccount) {
       const jobs = jobsByAccount[accountId];
 
-      // 1. Group jobs by boardName for round-robin interleaving
+      // Group jobs by boardName for round-robin interleaving
       const jobsByBoard: Record<string, QueueJob[]> = {};
       jobs.forEach(job => {
         const bName = (job.boardName || '').trim() || 'Default Board';
@@ -273,7 +508,7 @@ export const Queue: React.FC<QueueProps> = ({
         jobsByBoard[bName].push(job);
       });
 
-      // 2. Interleave the jobs round-robin by board
+      // Interleave the jobs round-robin by board
       const interleavedJobs: QueueJob[] = [];
       const boardNames = Object.keys(jobsByBoard);
       const boardQueues = boardNames.map(name => jobsByBoard[name]);
@@ -292,7 +527,7 @@ export const Queue: React.FC<QueueProps> = ({
         round++;
       }
 
-      // 3. Keep track of daily scheduled count and board limits
+      // Track daily scheduled count and board limits
       const accountScheduledJobs = latestQueue.filter(j => j.accountId === accountId && j.status === 'scheduled' && j.scheduledDate && j.scheduledTime);
       const accountTimestamps = accountScheduledJobs.map(j => parseDateTimeToMs(j.scheduledDate!, j.scheduledTime!));
 
@@ -331,7 +566,6 @@ export const Queue: React.FC<QueueProps> = ({
           continue;
         }
 
-        // Find the first job that fits within limits (max 7 per board on this day)
         let chosenJobIdx = -1;
         for (let idx = 0; idx < remainingJobs.length; idx++) {
           const job = remainingJobs[idx];
@@ -356,7 +590,6 @@ export const Queue: React.FC<QueueProps> = ({
         }
       }
 
-      // 4. Distribute the assigned jobs across the hours of each day
       for (const dStr of dates) {
         const dayJobs = assignedJobsByDate[dStr] || [];
         const K = dayJobs.length;
@@ -483,8 +716,6 @@ export const Queue: React.FC<QueueProps> = ({
         onShowToast('🎉 Publish queue execution completed!', 'success');
       }
     });
-    // NOTE: onBrowserStatusChange is handled globally in App.tsx to keep the status banner working
-    // across all screens. Individual browser log messages arrive via queue:progress events.
   }, [onRefreshQueue, onShowToast]);
 
   const handleStartQueue = async () => {
@@ -606,9 +837,22 @@ export const Queue: React.FC<QueueProps> = ({
     }
   };
   const filteredJobs = getFilteredJobs();
+  const selectableVisibleJobs = filteredJobs.filter(j => j.status !== 'running');
+  const isAllVisibleSelected = selectableVisibleJobs.length > 0 && selectableVisibleJobs.every(j => selectedJobIds.includes(j.id));
+
+  // Compute selected count breakdown
+  const selectedJobs = queue.filter(q => selectedJobIds.includes(q.id));
+  const selectedFailedCount = selectedJobs.filter(q => q.status === 'failed').length;
+  const selectedScheduledCount = selectedJobs.filter(q => q.status === 'scheduled').length;
+
+  // Unique board list for dropdown
+  const uniqueBoardNames = Array.from(new Set([
+    ...allBoards.map(b => b.name),
+    ...queue.map(q => q.boardName).filter(Boolean) as string[]
+  ])).sort();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
@@ -618,7 +862,7 @@ export const Queue: React.FC<QueueProps> = ({
           </p>
         </div>
 
-        {/* Controls */}
+        {/* Top Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {!isProcessing ? (
             <button onClick={handleStartQueue}
@@ -664,6 +908,20 @@ export const Queue: React.FC<QueueProps> = ({
             </button>
           )}
 
+          <button 
+            onClick={() => setShowAutoRetryPanel(!showAutoRetryPanel)}
+            title="Auto-Retry Settings"
+            style={{
+              padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
+              background: autoRetryEnabled ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)',
+              border: autoRetryEnabled ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(255,255,255,0.08)',
+              color: autoRetryEnabled ? '#c084fc' : 'rgba(255,255,255,0.4)',
+              display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12
+            }}>
+            <RotateCcw className="w-4 h-4" /> Auto-Retry
+            {autoRetryEnabled && <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping"></span>}
+          </button>
+
           <button onClick={handleClearQueue} disabled={isProcessing}
             title="Clear Queue"
             style={{
@@ -676,6 +934,202 @@ export const Queue: React.FC<QueueProps> = ({
           </button>
         </div>
       </div>
+
+      {/* View Mode Selector Tabs */}
+      <div className="flex items-center justify-between bg-slate-950/80 p-2 rounded-2xl border border-slate-850 shadow-lg">
+        <div className="flex items-center gap-1.5 font-mono text-xs font-extrabold">
+          <button
+            type="button"
+            onClick={() => setQueueViewMode('pipeline')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+              queueViewMode === 'pipeline'
+                ? 'bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 text-white shadow-lg shadow-violet-950/50 border border-violet-400/30 font-black'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-cyan-300" />
+            <span>⚡ Live Pipeline Matrix</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setQueueViewMode('calendar')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+              queueViewMode === 'calendar'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-950/50 border border-purple-400/30 font-black'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-purple-300" />
+            <span>📅 Interactive Calendar</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setQueueViewMode('list')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+              queueViewMode === 'list'
+                ? 'bg-slate-900 text-slate-100 border border-slate-750 font-black'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <ListOrdered className="w-4 h-4 text-slate-400" />
+            <span>📋 Queue List ({queue.length})</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {queueViewMode === 'pipeline' && (
+            <span className="text-[11px] text-cyan-300 font-mono font-bold bg-cyan-950/60 px-3 py-1 rounded-xl border border-cyan-800/40">
+              Multi-Account Stream Active
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Render View Modes */}
+      {queueViewMode === 'pipeline' && (
+        <AutoPinningPipeline
+          jobs={queue}
+          accounts={accounts}
+          isExecuting={isProcessing}
+          onToggleExecute={isProcessing ? handleStopQueue : handleStartQueue}
+          onRefresh={onRefreshQueue}
+          onShowToast={onShowToast}
+        />
+      )}
+
+      {queueViewMode === 'calendar' && (
+        <div className="p-4 bg-slate-950/90 border border-slate-850 rounded-2xl shadow-xl">
+          <ContentCalendar
+            queue={queue}
+            onRescheduleItem={async (jobId, newDate) => {
+              const job = queue.find(j => j.id === jobId);
+              if (job) {
+                await handleUpdateSchedule(jobId, newDate, job.scheduledTime || '09:00');
+                onShowToast(`Rescheduled job #${jobId} to ${newDate}`, 'success');
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {queueViewMode === 'list' && (
+        <>
+
+      {/* Action Bar for Failed Jobs & Auto-Retry UI */}
+      {failedJobs.length > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(159,18,57,0.15))',
+          border: '1px solid rgba(244,63,94,0.3)',
+          borderRadius: 16, padding: '14px 20px',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 14,
+          boxShadow: '0 4px 20px rgba(244,63,94,0.1)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f43f5e'
+            }}>
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{failedJobs.length} Failed Job(s) Detected</span>
+                {autoRetryEnabled && (
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(168,85,247,0.2)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }}>
+                    Auto-Retry Active (Max {maxRetries}x)
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', margin: '2px 0 0' }}>
+                Review error logs or click "Retry All Failed Jobs" to reset them to pending for the next publishing pass.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={handleRetryAllFailed}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+                background: '#f43f5e', color: '#fff', fontWeight: 800, fontSize: 12,
+                border: 'none', boxShadow: '0 4px 14px rgba(244,63,94,0.35)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RotateCcw className="w-4 h-4" /> Retry All Failed Jobs ({failedJobs.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Retry Settings Panel */}
+      {showAutoRetryPanel && (
+        <div style={{
+          background: 'rgba(20,20,30,0.85)',
+          border: '1px solid rgba(168,85,247,0.25)',
+          borderRadius: 16, padding: 18,
+          display: 'flex', flexDirection: 'column', gap: 14
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <RotateCcw className="w-4 h-4 text-purple-400" />
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Auto-Retry Configuration</span>
+            </div>
+            <button onClick={() => setShowAutoRetryPanel(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', display: 'block' }}>Auto-Retry Failed Jobs</span>
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', display: 'block', marginTop: 2 }}>Automatically retry failed tasks</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={autoRetryEnabled}
+                onChange={(e) => handleToggleAutoRetry(e.target.checked)}
+                className="w-5 h-5 rounded border-slate-700 text-purple-500 bg-slate-950 focus:ring-0 cursor-pointer"
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Max Retries Per Job</label>
+              <select
+                value={maxRetries}
+                onChange={(e) => handleChangeMaxRetries(Number(e.target.value))}
+                disabled={!autoRetryEnabled}
+                style={{ background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12 }}
+              >
+                <option value={1}>1 Retry Attempt</option>
+                <option value={2}>2 Retry Attempts</option>
+                <option value={3}>3 Retry Attempts</option>
+                <option value={5}>5 Retry Attempts</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Retry Delay Interval</label>
+              <select
+                value={retryDelayMinutes}
+                onChange={(e) => handleChangeRetryDelay(Number(e.target.value))}
+                disabled={!autoRetryEnabled}
+                style={{ background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12 }}
+              >
+                <option value={0}>Immediate (Next Pass)</option>
+                <option value={5}>5 Minutes</option>
+                <option value={15}>15 Minutes</option>
+                <option value={30}>30 Minutes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Execution Panel */}
       {isProcessing && (
@@ -761,7 +1215,110 @@ export const Queue: React.FC<QueueProps> = ({
         </div>
       )}
 
-      {/* Queue Items */}
+      {/* Multi-Select Floating Action Bar */}
+      {selectedJobIds.length > 0 && (
+        <div style={{
+          position: 'sticky', top: 12, zIndex: 30,
+          background: 'linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.95))',
+          border: '1px solid rgba(139, 92, 246, 0.4)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: 16, padding: '12px 20px',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.25)',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              background: '#8b5cf6', color: '#fff', fontSize: 12, fontWeight: 900,
+              padding: '4px 10px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 6
+            }}>
+              <CheckSquare className="w-3.5 h-3.5" />
+              {selectedJobIds.length} Selected
+            </span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
+              Queue Multi-Select Tools
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setBatchBoard('');
+                setBatchDestinationUrl('');
+                setBatchApplySchedule(false);
+                setBatchScheduleDate(getTodayDateString());
+                setBatchScheduleTime('09:00');
+                setBatchModalTab('field_editor');
+                setIsPreviewMode(false);
+                setShowBulkModal(true);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                border: 'none', color: '#fff', fontWeight: 800, fontSize: 12,
+                boxShadow: '0 4px 14px rgba(139,92,246,0.3)', transition: 'all 0.15s ease'
+              }}
+            >
+              <Edit3 className="w-3.5 h-3.5" /> Batch Edit / Schedule
+            </button>
+
+            {selectedFailedCount > 0 && (
+              <button
+                onClick={handleBatchRetrySelected}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                  background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)',
+                  color: '#f43f5e', fontWeight: 800, fontSize: 12, transition: 'all 0.15s ease'
+                }}
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Retry Selected ({selectedFailedCount})
+              </button>
+            )}
+
+            {selectedScheduledCount > 0 && (
+              <button
+                onClick={handleBatchUnscheduleSelected}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                  background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)',
+                  color: '#fbbf24', fontWeight: 800, fontSize: 12, transition: 'all 0.15s ease'
+                }}
+              >
+                <Clock className="w-3.5 h-3.5" /> Unschedule Selected ({selectedScheduledCount})
+              </button>
+            )}
+
+            <button
+              onClick={handleBatchDeleteSelected}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                color: '#f87171', fontWeight: 700, fontSize: 12, transition: 'all 0.15s ease'
+              }}
+              title="Delete selected jobs"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+
+            <button
+              onClick={() => setSelectedJobIds([])}
+              style={{
+                padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: 12
+              }}
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Queue Items Table / Container */}
       <div style={{ 
         background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: 18, overflow: 'hidden'
@@ -825,40 +1382,17 @@ export const Queue: React.FC<QueueProps> = ({
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16 }}>
-            {activeTab === 'queue' && pendingJobs.length > 0 && (
+            {selectableVisibleJobs.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <label className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer font-bold select-none">
+                <label className="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer font-bold select-none bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
                   <input
                     type="checkbox"
-                    checked={pendingJobs.length > 0 && selectedJobIds.length === pendingJobs.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedJobIds(pendingJobs.map(j => j.id));
-                      } else {
-                        setSelectedJobIds([]);
-                      }
-                    }}
+                    checked={isAllVisibleSelected}
+                    onChange={handleSelectAllVisible}
                     className="rounded border-slate-800 text-pinterest-red bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
                   />
-                  <span>Select All Pending</span>
+                  <span>Select All ({selectableVisibleJobs.length})</span>
                 </label>
-                {selectedJobIds.length > 0 && (
-                  <button
-                    onClick={() => {
-                      setBulkStartDate(getTodayDateString());
-                      setBulkEndDate(getTodayDateString());
-                      setBulkPostsPerDay(2);
-                      setBulkStartTime("09:00");
-                      setBulkSpreadWindow(4);
-                      setIsPreviewMode(false);
-                      setPreviewSlots([]);
-                      setShowBulkModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-md transition-colors"
-                  >
-                    <Clock className="w-3.5 h-3.5" /> Bulk Schedule ({selectedJobIds.length})
-                  </button>
-                )}
               </div>
             )}
             <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>
@@ -896,7 +1430,7 @@ export const Queue: React.FC<QueueProps> = ({
                   onRetry={handleRetryJob}
                   selected={selectedJobIds.includes(job.id)}
                   onToggleSelect={() => handleToggleSelect(job.id)}
-                  isSelectable={job.status === 'pending'}
+                  isSelectable={job.status !== 'running'}
                   onUpdateSchedule={handleUpdateSchedule}
                   onUnschedule={handleUnschedule}
                 />
@@ -905,20 +1439,32 @@ export const Queue: React.FC<QueueProps> = ({
           )}
         </div>
       </div>
+      </>
+      )}
 
+      {/* Batch Schedule & Queue Field Editor Modal */}
       <Modal
         isOpen={showBulkModal}
-        title="Bulk Schedule Queue"
+        title={batchModalTab === 'field_editor' ? `Batch Queue Editor (${selectedJobIds.length} items)` : `Bulk Schedule Generator (${selectedJobIds.length} items)`}
         onClose={() => setShowBulkModal(false)}
         size={isPreviewMode ? 'lg' : 'md'}
         footer={
           isPreviewMode ? (
             <>
               <Button variant="ghost" onClick={() => setIsPreviewMode(false)}>
-                Back
+                Back to Config
               </Button>
               <Button variant="success" onClick={handleConfirmBulkSchedule} loading={isConfirming}>
-                Confirm & Save
+                Confirm & Save Slots
+              </Button>
+            </>
+          ) : batchModalTab === 'field_editor' ? (
+            <>
+              <Button variant="ghost" onClick={() => setShowBulkModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleApplyBatchFieldEdits} loading={isApplyingBatch}>
+                Apply Edits to {selectedJobIds.length} Items
               </Button>
             </>
           ) : (
@@ -933,7 +1479,123 @@ export const Queue: React.FC<QueueProps> = ({
           )
         }
       >
-        {isPreviewMode ? (
+        {/* Mode Selector Tabs inside Modal */}
+        {!isPreviewMode && (
+          <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 12, marginBottom: 16 }}>
+            <button
+              onClick={() => setBatchModalTab('field_editor')}
+              style={{
+                flex: 1, padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                background: batchModalTab === 'field_editor' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                border: batchModalTab === 'field_editor' ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(255,255,255,0.06)',
+                color: batchModalTab === 'field_editor' ? '#c084fc' : 'rgba(255,255,255,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s ease'
+              }}
+            >
+              <Edit3 className="w-3.5 h-3.5" /> Batch Fields (Board, URL, Schedule)
+            </button>
+            <button
+              onClick={() => setBatchModalTab('distribution')}
+              style={{
+                flex: 1, padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                background: batchModalTab === 'distribution' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                border: batchModalTab === 'distribution' ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(255,255,255,0.06)',
+                color: batchModalTab === 'distribution' ? '#c084fc' : 'rgba(255,255,255,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s ease'
+              }}
+            >
+              <Clock className="w-3.5 h-3.5" /> Bulk Date/Time Distribution
+            </button>
+          </div>
+        )}
+
+        {/* Tab 1: Batch Field Editor */}
+        {batchModalTab === 'field_editor' && !isPreviewMode && (
+          <div className="flex flex-col gap-4 text-sm text-slate-300">
+            <p className="text-slate-400 text-xs leading-normal">
+              Update Pinterest board, destination URL, or specific schedule date/time across all <span className="text-purple-400 font-bold">{selectedJobIds.length}</span> selected jobs simultaneously. Leave fields unchanged to keep their existing values.
+            </p>
+
+            {/* Target Board Field */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 text-purple-400" /> Target Board
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <select
+                  value={batchBoard}
+                  onChange={(e) => setBatchBoard(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="">-- Keep Existing Board --</option>
+                  {uniqueBoardNames.map((name, idx) => (
+                    <option key={idx} value={name}>{name}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Or enter board name..."
+                  value={batchBoard}
+                  onChange={(e) => setBatchBoard(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            {/* Destination URL Field */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-blue-400" /> Destination Link / URL
+              </label>
+              <input
+                type="text"
+                placeholder="Leave blank to keep existing URLs..."
+                value={batchDestinationUrl}
+                onChange={(e) => setBatchDestinationUrl(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {/* Scheduled Date & Time Field */}
+            <div className="flex flex-col gap-2.5 p-3.5 bg-slate-950/40 border border-slate-800/80 rounded-xl">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={batchApplySchedule}
+                  onChange={(e) => setBatchApplySchedule(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-800 text-purple-600 bg-slate-950 focus:ring-0 cursor-pointer"
+                />
+                <span>Set Exact Schedule Date & Time for all selected</span>
+              </label>
+
+              {batchApplySchedule && (
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Scheduled Date</label>
+                    <input
+                      type="date"
+                      value={batchScheduleDate}
+                      onChange={(e) => setBatchScheduleDate(e.target.value)}
+                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Scheduled Time</label>
+                    <input
+                      type="time"
+                      value={batchScheduleTime}
+                      onChange={(e) => setBatchScheduleTime(e.target.value)}
+                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Bulk Distribution Preview / Config */}
+        {batchModalTab === 'distribution' && isPreviewMode ? (
           <div className="flex flex-col gap-4 text-sm text-slate-350">
             <p className="text-slate-400 text-xs">
               Verify the generated publishing slots before finalizing.
@@ -970,10 +1632,10 @@ export const Queue: React.FC<QueueProps> = ({
               </table>
             </div>
           </div>
-        ) : (
+        ) : batchModalTab === 'distribution' && !isPreviewMode ? (
           <div className="flex flex-col gap-4 text-sm text-slate-300">
             <p className="text-slate-450 text-xs leading-normal">
-              Distribute the <span className="text-slate-250 font-bold">{selectedJobIds.length}</span> selected pending jobs evenly across the chosen date range.
+              Distribute the <span className="text-purple-400 font-bold">{selectedJobIds.length}</span> selected pending jobs evenly across the chosen date range with anti-collision spacing.
             </p>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1030,10 +1692,13 @@ export const Queue: React.FC<QueueProps> = ({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </Modal>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   );
 };

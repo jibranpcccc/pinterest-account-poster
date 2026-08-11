@@ -431,11 +431,17 @@ async function injectMockApi(page, dbHelper) {
         </div>
       `;
 
-      container.querySelector('#e2e-autostart-toggle').addEventListener('change', async (e) => {
+      // Serialize auto-start toggle operations and update the UI label without
+      // touching the checkbox itself, so Playwright check/uncheck doesn't race
+      // against an async DB-driven reset of the input.checked property.
+      let autoStartQueue = Promise.resolve();
+      container.querySelector('#e2e-autostart-toggle').addEventListener('change', (e) => {
         const checked = e.target.checked;
-        await window.nodeSetAutoStart(checked);
-        await window.nodeTriggerNotification('Auto-Start Setting Updated', `Registry auto-start has been ${checked ? 'enabled' : 'disabled'}.`);
-        await updateUiData(container);
+        autoStartQueue = autoStartQueue
+          .then(() => window.nodeSetAutoStart(checked))
+          .then(() => window.nodeTriggerNotification('Auto-Start Setting Updated', `Registry auto-start has been ${checked ? 'enabled' : 'disabled'}.`))
+          .then(() => updateAutoStartStatus(container, checked))
+          .catch((err) => console.error('Auto-start toggle failed:', err));
       });
 
       container.querySelector('#e2e-btn-minimize').addEventListener('click', async () => {
@@ -517,6 +523,14 @@ async function injectMockApi(page, dbHelper) {
         await window.nodeTriggerNotification('Bulk Schedules Generated', `Successfully scheduled ${count} pins over ${days} days.`);
         await updateUiData(container);
       });
+    }
+
+    function updateAutoStartStatus(container, autoStart) {
+      const autostartStatus = container.querySelector('#e2e-autostart-status');
+      if (autostartStatus) {
+        autostartStatus.innerText = autoStart ? 'ENABLED' : 'DISABLED';
+        autostartStatus.style.color = autoStart ? '#22c55e' : '#ef4444';
+      }
     }
 
     async function updateUiData(container) {

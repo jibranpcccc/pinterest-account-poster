@@ -22,6 +22,7 @@ import { OpenCodeProvider } from './ai/openCodeProvider';
 import { AnalyticsFetcher } from './publisher/analyticsFetcher';
 import { RepinExecutor } from './publisher/repinExecutor';
 import { Account, Board, Draft, QueueJob } from './types';
+import { batchScrubImages } from './publisher/aiImageCleaner';
 
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -579,14 +580,44 @@ function registerIpcHandlers() {
     return isConnected;
   });
 
-  // Analytics handler
+  // Analytics handlers
   ipcMain.handle('pinterest:fetchAnalytics', async (_, accountId: string) => {
     const accounts = await db.query<Account>('SELECT * FROM accounts WHERE id = ?', [accountId]);
     if (accounts.length === 0) throw new Error('Account not found');
     
     const fetcher = new AnalyticsFetcher();
-    return fetcher.fetchAnalytics(accounts[0].id, accounts[0].profilePath);
+    const result = await fetcher.fetchAnalytics(accounts[0].id, accounts[0].profilePath);
+    if (result) {
+      try {
+        await db.saveAnalyticsSnapshot({
+          accountId: accounts[0].id,
+          followersRaw: result.followers,
+          monthlyViewsRaw: result.monthlyViews,
+          impressions: result.impressions ? parseInt(result.impressions.replace(/\D/g, '')) || 0 : 0,
+          engagements: result.engagements ? parseInt(result.engagements.replace(/\D/g, '')) || 0 : 0,
+          outboundClicks: result.outboundClicks ? parseInt(result.outboundClicks.replace(/\D/g, '')) || 0 : 0,
+          saves: result.saves ? parseInt(result.saves.replace(/\D/g, '')) || 0 : 0,
+          timestamp: result.timestamp || new Date().toISOString()
+        });
+      } catch (e) {
+        console.error('Failed to save analytics snapshot to DB:', e);
+      }
+    }
+    return result;
   });
+
+  ipcMain.handle('db:getAnalyticsHistory', async (_, accountId?: string) => {
+    return db.getAnalyticsHistory(accountId);
+  });
+
+  ipcMain.handle('db:saveAnalyticsSnapshot', async (_, snapshot: any) => {
+    return db.saveAnalyticsSnapshot(snapshot);
+  });
+
+  ipcMain.handle('db:seedAnalyticsHistory', async (_, accountId: string) => {
+    return db.seedAnalyticsHistory(accountId);
+  });
+
 
   // Repin handlers
   ipcMain.handle('db:getRepinJobs', async () => {
@@ -965,6 +996,12 @@ function registerIpcHandlers() {
       default:
         throw new Error(`Unknown AI action: ${action}`);
     }
+  });
+
+  ipcMain.handle('ai:batchScrubImages', async (_, items: any[], options: any) => {
+    return batchScrubImages(items, options, (current, total, message) => {
+      mainWindow?.webContents.send('queue:progress', { current, total, message });
+    });
   });
 
   // ── Diagnostic: test Cloudflare accounts loading & speed ─────────────────

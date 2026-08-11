@@ -43,7 +43,10 @@ export class AnalyticsFetcher {
       await page.goto('https://www.pinterest.com/me/', { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(3000); // Wait for redirect and render
       
-      const currentUrl = page.url();
+      let currentUrl = '';
+      if (page) {
+        currentUrl = page.url();
+      }
       if (currentUrl.includes('/login')) {
         throw new Error('Not logged in.');
       }
@@ -80,7 +83,7 @@ export class AnalyticsFetcher {
         await page.goto('https://www.pinterest.com/business/hub/', { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForTimeout(3000);
         
-        if (!page.url().includes('/login')) {
+        if (!page || !page.url().includes('/login')) {
           const scrapeMetric = async (label: string) => {
             try {
               // Locate the box containing the label, then get the big number inside it

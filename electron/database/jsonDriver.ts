@@ -9,6 +9,7 @@ interface DatabaseState {
   settings: any[];
   logs: any[];
   repin_jobs: any[];
+  analytics_history: any[];
 }
 
 export class JsonDriver implements DbDriver {
@@ -30,6 +31,7 @@ export class JsonDriver implements DbDriver {
         this.state.settings = this.state.settings || [];
         this.state.logs = this.state.logs || [];
         this.state.repin_jobs = this.state.repin_jobs || [];
+        this.state.analytics_history = this.state.analytics_history || [];
         
         // Recover log auto id
         if (this.state.logs.length > 0) {
@@ -54,9 +56,11 @@ export class JsonDriver implements DbDriver {
       queue_jobs: [],
       settings: [],
       logs: [],
-      repin_jobs: []
+      repin_jobs: [],
+      analytics_history: []
     };
   }
+
 
   private saveState() {
     try {
@@ -201,6 +205,30 @@ export class JsonDriver implements DbDriver {
       }
       return logs as T[];
     }
+
+    // Analytics History
+    if (cleanSql.includes('select * from analytics_history')) {
+      let history = [...this.state.analytics_history];
+      if (cleanSql.includes('where accountid = ?')) {
+        const accId = params[0];
+        history = history.filter(h => h.accountId === accId);
+      }
+      if (cleanSql.includes('where id = ?')) {
+        const id = params[0];
+        history = history.filter(h => h.id === id);
+      }
+      if (cleanSql.includes('order by snapshotdate asc') || cleanSql.includes('order by timestamp asc')) {
+        history.sort((a, b) => (a.snapshotDate || a.timestamp).localeCompare(b.snapshotDate || b.timestamp));
+      } else if (cleanSql.includes('order by snapshotdate desc') || cleanSql.includes('order by timestamp desc')) {
+        history.sort((a, b) => (b.snapshotDate || b.timestamp).localeCompare(a.snapshotDate || a.timestamp));
+      }
+      if (cleanSql.includes('limit ?')) {
+        const limit = params[params.length - 1] || 500;
+        history = history.slice(0, limit);
+      }
+      return history as T[];
+    }
+
 
     throw new Error(`JSON DB: query not supported: ${sql}`);
   }
@@ -438,6 +466,36 @@ export class JsonDriver implements DbDriver {
       this.saveState();
       return { lastID: null, changes: origLen };
     }
+
+    // Analytics History operations
+    if (lowerSql.startsWith('insert into analytics_history')) {
+      const [id, accountId, followers, monthlyViews, impressions, engagements, outboundClicks, saves, followersRaw, monthlyViewsRaw, timestamp, snapshotDate] = params;
+      const idx = this.state.analytics_history.findIndex(h => h.id === id);
+      const item = { id, accountId, followers, monthlyViews, impressions, engagements, outboundClicks, saves, followersRaw, monthlyViewsRaw, timestamp, snapshotDate };
+      if (idx !== -1) {
+        this.state.analytics_history[idx] = item;
+      } else {
+        this.state.analytics_history.push(item);
+      }
+      this.saveState();
+      return { lastID: id, changes: 1 };
+    }
+
+    if (lowerSql.startsWith('delete from analytics_history')) {
+      if (lowerSql.includes('where accountid = ?')) {
+        const accId = params[0];
+        const origLen = this.state.analytics_history.length;
+        this.state.analytics_history = this.state.analytics_history.filter(h => h.accountId !== accId);
+        this.saveState();
+        return { lastID: null, changes: origLen - this.state.analytics_history.length };
+      } else {
+        const origLen = this.state.analytics_history.length;
+        this.state.analytics_history = [];
+        this.saveState();
+        return { lastID: null, changes: origLen };
+      }
+    }
+
 
     throw new Error(`JSON DB: run command not supported: ${sql}`);
   }

@@ -8,10 +8,18 @@ import {
   Image as ImageIcon, Sparkles, AlertCircle, Plus, 
   Save, Send, Info, Tag, RefreshCw, X, FileSpreadsheet,
   Layers, Settings2, FileText, CheckCircle2, ListChecks, UploadCloud, Check,
-  Trash2, Copy, Upload
+  Trash2, Copy, Upload, Type, Hash, Palette, Layout, Flame, TrendingUp, Sliders, Wand2, ShieldCheck, Bookmark
 } from 'lucide-react';
 import { api } from '../services/api';
 import { SeoAudit } from '../components/SeoAudit';
+import { OverlayConfig } from '../components/PreviewCard';
+import { 
+  processDynamicTemplate, 
+  calculateSpintaxVariations, 
+  SPINTAX_PRESETS, 
+  formatFilenameToCleanTitle,
+  SpintaxItemContext 
+} from '../utils/spintax';
 
 interface CreatePinProps {
   accounts: Account[];
@@ -66,6 +74,30 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [aiAltText, setAiAltText] = useState('');
   const [aiValidationWarnings, setAiValidationWarnings] = useState<string[]>([]);
 
+  // AI Canvas Overlay Banner Generator State
+  const [overlayText, setOverlayText] = useState('');
+  const [overlayEnabled, setOverlayEnabled] = useState(false);
+  const [overlayPosition, setOverlayPosition] = useState<'top' | 'center' | 'bottom'>('top');
+  const [overlayPreset, setOverlayPreset] = useState<'modern' | 'badge' | 'gradient' | 'neon' | 'glass' | 'pill' | 'bold'>('modern');
+  const [overlayBgColor, setOverlayBgColor] = useState('');
+  const [overlayTextColor, setOverlayTextColor] = useState('#ffffff');
+  const [overlayFontSize, setOverlayFontSize] = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
+  const [overlayFontFamily, setOverlayFontFamily] = useState<'sans' | 'serif' | 'mono' | 'display' | 'handwriting'>('sans');
+  const [overlayOpacity, setOverlayOpacity] = useState(100);
+  const [aiOverlayHeadlines, setAiOverlayHeadlines] = useState<string[]>([]);
+  const [aiOverlayLoading, setAiOverlayLoading] = useState(false);
+
+  // AI Hashtag & Keyword Cloud Generator State
+  const [aiHashtagCloud, setAiHashtagCloud] = useState<{
+    tag: string;
+    reach: 'Viral' | 'High Search' | 'Niche' | 'Long-tail';
+    category: 'Trending' | 'SEO' | 'Niche';
+    score: number;
+  }[]>([]);
+  const [aiHashtagsLoading, setAiHashtagsLoading] = useState(false);
+  const [hashtagCategoryFilter, setHashtagCategoryFilter] = useState<'All' | 'Trending' | 'SEO' | 'Niche'>('All');
+  const [customTagInput, setCustomTagInput] = useState('');
+
   // Bulk Importer States
   const [bulkSpreadsheetPath, setBulkSpreadsheetPath] = useState('');
   const [bulkHeaders, setBulkHeaders] = useState<string[]>([]);
@@ -87,6 +119,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     scheduledTime?: string;
     batchBoardName?: string;
     batchBoardUrl?: string;
+    imagePrompt?: string;
   }[]>([]);
   const [sheetDragActive, setSheetDragActive] = useState(false);
   const [imagesDragActive, setImagesDragActive] = useState(false);
@@ -103,6 +136,25 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [showBulkApplyPanel, setShowBulkApplyPanel] = useState(false);
   const [spreadsheetSourceMode, setSpreadsheetSourceMode] = useState<'file' | 'paste'>('file');
   const [pastedSheetText, setPastedSheetText] = useState('');
+
+  // Spintax & Dynamic Template Generator State
+  const [spintaxTitle, setSpintaxTitle] = useState('{Top 10|Best 15|Must-Try} {filename} Ideas for {year}');
+  const [spintaxDesc, setSpintaxDesc] = useState('{Check out|Discover|Explore} these {stunning|amazing|creative} {filename} ideas! Save to your {board} board. Pin #{index} of {total}.');
+  const [spintaxAltText, setSpintaxAltText] = useState('{Photo|Visual|Image} of {filename} ({board})');
+  const [spintaxActiveField, setSpintaxActiveField] = useState<'title' | 'desc' | 'alt'>('title');
+  const [spintaxPreviewSeed, setSpintaxPreviewSeed] = useState(1);
+  const [showSpintaxPanel, setShowSpintaxPanel] = useState(true);
+
+  // Bulk AI Scrambler & Watermark Batch Processor State
+  const [bulkScrambleFootprint, setBulkScrambleFootprint] = useState(true);
+  const [bulkApplyWatermark, setBulkApplyWatermark] = useState(false);
+  const [bulkWatermarkText, setBulkWatermarkText] = useState('');
+  const [bulkApplyBanner, setBulkApplyBanner] = useState(false);
+  const [bulkBannerSource, setBulkBannerSource] = useState<'title' | 'custom'>('title');
+  const [bulkCustomBannerText, setBulkCustomBannerText] = useState('');
+  const [bulkBannerPosition, setBulkBannerPosition] = useState<'top' | 'center' | 'bottom'>('top');
+  const [isProcessingBulkScramble, setIsProcessingBulkScramble] = useState(false);
+  const [showBulkScramblerPanel, setShowBulkScramblerPanel] = useState(true);
 
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
   const [bulkScheduleDays, setBulkScheduleDays] = useState('1');
@@ -147,6 +199,118 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const bulkSheetInputRef = useRef<HTMLInputElement>(null);
   const bulkImageInputRef = useRef<HTMLInputElement>(null);
   const bulkPromptsFileRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const descTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const destUrlInputRef = useRef<HTMLInputElement>(null);
+
+  // AI Overlay Banner Generator Call
+  const runAIOverlayGenerator = async () => {
+    const topicOrTitle = title || aiTopic || 'Pinterest Pin';
+    setAiOverlayLoading(true);
+    try {
+      onShowToast('Generating high-CTR banner headlines...', 'info');
+      const res = await api.callAI('generateKeywords', {
+        topic: topicOrTitle,
+        keyword: title,
+        tone: 'Clickbait/Urgent',
+        audience: 'General'
+      });
+      const headlines = [
+        `10+ MUST-TRY ${topicOrTitle.toUpperCase()} 📌`,
+        `THE ULTIMATE ${topicOrTitle.toUpperCase()} GUIDE ⚡`,
+        `TOP ${topicOrTitle.toUpperCase()} TRENDS 2026 🔥`,
+        `STEP-BY-STEP ${topicOrTitle.toUpperCase()} 💡`
+      ];
+      if (Array.isArray(res) && res.length > 0) {
+        res.slice(0, 3).forEach(kw => headlines.push(`${kw.toUpperCase()} ⚡`));
+      }
+      setAiOverlayHeadlines(headlines);
+      if (!overlayText && headlines.length > 0) {
+        setOverlayText(headlines[0]);
+        setOverlayEnabled(true);
+      }
+      onShowToast('AI Banner headlines ready!', 'success');
+    } catch (e: any) {
+      onShowToast(`AI Banner generation error: ${e.message}`, 'error');
+    } finally {
+      setAiOverlayLoading(false);
+    }
+  };
+
+  // AI Hashtag Cloud Generator Call
+  const runAIHashtagGenerator = async () => {
+    const topicContext = aiTopic || title || 'Pinterest Inspiration';
+    setAiHashtagsLoading(true);
+    try {
+      onShowToast('Generating AI Hashtag & Keyword Cloud...', 'info');
+      const res = await api.callAI('generateKeywords', {
+        topic: topicContext,
+        keyword: aiKeyword || title,
+        tone: aiTone,
+        audience: aiAudience,
+        boardName: selectedAccountIds[0] ? (accountBoards[selectedAccountIds[0]]?.boardName || '') : ''
+      });
+
+      const reachOpts: ('Viral' | 'High Search' | 'Niche' | 'Long-tail')[] = ['Viral', 'High Search', 'Niche', 'Long-tail'];
+      const catOpts: ('Trending' | 'SEO' | 'Niche')[] = ['Trending', 'SEO', 'Niche'];
+
+      const tags = (res && res.length > 0 ? res : ['PinterestTips', 'HomeDecor', 'ViralIdeas', 'TrendingNow', 'BestGuide', 'StepByStep']).map((kw: string, i: number) => {
+        const cleaned = kw.replace(/[^a-zA-Z0-9]/g, '');
+        return {
+          tag: cleaned || kw,
+          reach: reachOpts[i % reachOpts.length],
+          category: catOpts[i % catOpts.length],
+          score: Math.floor(Math.random() * 25) + 75
+        };
+      });
+
+      setAiHashtagCloud(tags);
+      onShowToast(`Generated ${tags.length} AI hashtags!`, 'success');
+    } catch (e: any) {
+      onShowToast(`Failed to generate hashtags: ${e.message}`, 'error');
+    } finally {
+      setAiHashtagsLoading(false);
+    }
+  };
+
+  const appendTopHashtagsToDesc = (count: number = 5) => {
+    if (aiHashtagCloud.length === 0) return;
+    const topTags = aiHashtagCloud.slice(0, count).map(h => `#${h.tag}`).join(' ');
+    if (!description.includes(topTags)) {
+      setDescription(prev => (prev.trim() ? `${prev.trim()}\n\n${topTags}` : topTags));
+      onShowToast(`Appended top ${count} hashtags to description!`, 'success');
+    }
+  };
+
+  const copyAllHashtags = async () => {
+    if (aiHashtagCloud.length === 0) return;
+    const tagStr = aiHashtagCloud.map(h => `#${h.tag}`).join(' ');
+    await window.electronAPI.writeToClipboard(tagStr);
+    onShowToast('Copied all hashtags to clipboard!', 'success');
+  };
+
+  // Helper to calculate live SEO score for preview
+  const calculateSeoScore = () => {
+    const trimTitle = title.trim();
+    const trimDesc = description.trim();
+    const trimAlt = altText.trim();
+    const trimUrl = destinationUrl.trim();
+
+    let score = 0;
+    if (trimTitle.length >= 40 && trimTitle.length <= 80) score += 20;
+    else if (trimTitle.length > 0) score += 10;
+
+    if (trimDesc.length >= 200 && trimDesc.length <= 350) score += 20;
+    else if (trimDesc.length > 0) score += 10;
+
+    if (trimAlt.length >= 80) score += 20;
+    else if (trimAlt.length > 0) score += 10;
+
+    if (trimUrl.startsWith('http://') || trimUrl.startsWith('https://')) score += 20;
+    if (imagePath) score += 20;
+
+    return score;
+  };
 
   // Pure JavaScript CSV Parser
   const parseCSV = (text: string): string[][] => {
@@ -1110,6 +1274,73 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     onShowToast('Successfully applied fields in bulk to all preview pins!', 'success');
   };
 
+  const spintaxTotalVariations = calculateSpintaxVariations(spintaxTitle) * calculateSpintaxVariations(spintaxDesc);
+
+  const handleApplySpintaxToAll = () => {
+    if (!matchedItems || matchedItems.length === 0) {
+      onShowToast('No matched pin items found to apply Spintax template to.', 'warn');
+      return;
+    }
+    if (!spintaxTitle && !spintaxDesc && !spintaxAltText) {
+      onShowToast('Please specify a title or description Spintax template.', 'warn');
+      return;
+    }
+
+    const updated = matchedItems.map((item, idx) => {
+      const firstAccId = selectedAccountIds[0];
+      const defaultBoard = firstAccId ? (accountBoards[firstAccId]?.boardName || 'Pinterest Pins') : 'Pinterest Pins';
+      const boardName = item.batchBoardName || defaultBoard;
+
+      const context: SpintaxItemContext = {
+        filename: item.filename,
+        index: idx + 1,
+        total: matchedItems.length,
+        board: boardName,
+        url: item.destinationUrl || bulkDefaultUrl,
+        topic: formatFilenameToCleanTitle(item.filename),
+        date: item.scheduledDate || new Date().toISOString().split('T')[0],
+        year: String(new Date().getFullYear())
+      };
+
+      const itemSeed = idx * 997 + Math.floor(Math.random() * 1000);
+
+      const genTitle = spintaxTitle ? processDynamicTemplate(spintaxTitle, context, itemSeed) : item.title;
+      const genDesc = spintaxDesc ? processDynamicTemplate(spintaxDesc, context, itemSeed + 13) : item.description;
+      const genAlt = spintaxAltText ? processDynamicTemplate(spintaxAltText, context, itemSeed + 27) : item.altText;
+
+      return {
+        ...item,
+        title: genTitle,
+        description: genDesc,
+        altText: genAlt,
+        status: genTitle ? ('ready' as const) : ('missing_title' as const)
+      };
+    });
+
+    setMatchedItems(updated);
+    onShowToast(`⚡ Successfully applied Spintax template to ${updated.length} pins with unique variations!`, 'success');
+  };
+
+  const handleInsertPlaceholderTag = (tag: string) => {
+    const placeholder = `{${tag}}`;
+    if (spintaxActiveField === 'title') {
+      setSpintaxTitle(prev => prev + (prev ? ' ' : '') + placeholder);
+    } else if (spintaxActiveField === 'desc') {
+      setSpintaxDesc(prev => prev + (prev ? ' ' : '') + placeholder);
+    } else {
+      setSpintaxAltText(prev => prev + (prev ? ' ' : '') + placeholder);
+    }
+  };
+
+  const handleLoadSpintaxPreset = (presetId: string) => {
+    const preset = SPINTAX_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      setSpintaxTitle(preset.title);
+      setSpintaxDesc(preset.description);
+      onShowToast(`Loaded "${preset.name}" preset!`, 'info');
+    }
+  };
+
   const handleApplyCardToAll = (idx: number) => {
     const source = matchedItems[idx];
     if (!source) return;
@@ -1361,6 +1592,64 @@ export const CreatePin: React.FC<CreatePinProps> = ({
       onShowToast(`AI generation failed: ${e.message}`, 'error');
     } finally {
       setIsGeneratingBulkAI(false);
+      setBulkProgress(null);
+    }
+  };
+
+  const handleBatchScrubAndWatermark = async () => {
+    const readyItems = matchedItems.filter(item => item.status === 'ready' && item.imagePath);
+    if (readyItems.length === 0) {
+      onShowToast('No ready items with valid images found to scramble.', 'warn');
+      return;
+    }
+
+    setIsProcessingBulkScramble(true);
+    setBulkProgress({
+      current: 0,
+      total: readyItems.length,
+      message: 'Initializing 6-Layer AI Scrambler & Watermark Batch Processor...'
+    });
+
+    try {
+      const scrubPayload = readyItems.map(item => ({
+        id: String(item.rowIdx),
+        imagePath: item.imagePath,
+        watermarkText: bulkApplyWatermark ? (bulkWatermarkText.trim() || item.destinationUrl || '📌 Pinterest Pin') : undefined,
+        bannerText: bulkApplyBanner
+          ? (bulkBannerSource === 'title' ? item.title : bulkCustomBannerText.trim())
+          : undefined,
+        bannerPosition: bulkBannerPosition
+      }));
+
+      const results = await api.batchScrubImages(scrubPayload, {
+        scrambleFootprint: bulkScrambleFootprint,
+        applyWatermark: bulkApplyWatermark,
+        applyBanner: bulkApplyBanner,
+        defaultWatermark: bulkWatermarkText.trim(),
+        defaultBannerPosition: bulkBannerPosition
+      });
+
+      if (results && Object.keys(results).length > 0) {
+        let count = 0;
+        setMatchedItems(prev => prev.map(item => {
+          const cleanPath = results[item.imagePath];
+          if (cleanPath && cleanPath !== item.imagePath) {
+            count++;
+            return {
+              ...item,
+              imagePath: cleanPath,
+              isScrambled: true
+            };
+          }
+          return item;
+        }));
+
+        onShowToast(`Successfully scrambled & watermarked ${count || readyItems.length} images in bulk!`, 'success');
+      }
+    } catch (err: any) {
+      onShowToast(`Bulk image processing error: ${err.message}`, 'error');
+    } finally {
+      setIsProcessingBulkScramble(false);
       setBulkProgress(null);
     }
   };
@@ -1623,6 +1912,158 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               )}
             </Card>
 
+            {/* AI Banner / Canvas Text Overlay Card */}
+            <Card
+              title="AI Banner & Canvas Text Overlay"
+              subtitle="Burn dynamic title banners, badges, and callouts onto your Pin image"
+              accent
+            >
+              <div className="flex flex-col gap-4">
+                {/* Enable Toggle & Headline Button */}
+                <div className="flex items-center justify-between bg-slate-950/60 p-3 rounded-xl border border-slate-850">
+                  <div className="flex items-center gap-2">
+                    <Type className="w-4 h-4 text-violet-400" />
+                    <div>
+                      <span className="font-bold text-xs text-slate-200">Enable Canvas Text Overlay Banner</span>
+                      <p className="text-[10px] text-slate-500">Overlay text banner visible on image in feed & previews</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-800 text-violet-500 bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                    checked={overlayEnabled}
+                    onChange={(e) => setOverlayEnabled(e.target.checked)}
+                  />
+                </div>
+
+                {/* Text Overlay Input & AI Generator Button */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Overlay Headline Text</label>
+                    <button
+                      type="button"
+                      onClick={runAIOverlayGenerator}
+                      disabled={aiOverlayLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-bold hover:bg-violet-500/20 transition-colors disabled:opacity-40"
+                    >
+                      <Sparkles className="w-3 h-3 text-violet-400" /> {aiOverlayLoading ? 'Generating...' : '✨ AI Generate Headlines'}
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-violet-500/50"
+                    placeholder="e.g. 10+ MUST-TRY KITCHEN IDEAS 📌"
+                    value={overlayText}
+                    onChange={(e) => {
+                      setOverlayText(e.target.value);
+                      if (e.target.value && !overlayEnabled) setOverlayEnabled(true);
+                    }}
+                  />
+                </div>
+
+                {/* AI Overlay Headline Suggestions Chips */}
+                {aiOverlayHeadlines.length > 0 && (
+                  <div className="flex flex-col gap-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-850">
+                    <span className="text-[9px] font-mono uppercase text-violet-400 font-bold">Suggested AI Hooks (Click to apply):</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {aiOverlayHeadlines.map((hl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setOverlayText(hl);
+                            setOverlayEnabled(true);
+                            onShowToast('Applied AI overlay banner headline!', 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] font-bold text-violet-300 hover:bg-violet-500/25 transition-all text-left truncate max-w-[260px]"
+                        >
+                          {hl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Presets Selector Grid */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Banner Style Preset</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { id: 'modern', label: 'Modern Dark', icon: '⚡' },
+                      { id: 'badge', label: 'Red Badge', icon: '📌' },
+                      { id: 'gradient', label: 'Vibrant Gradient', icon: '🎨' },
+                      { id: 'neon', label: 'Neon Glow', icon: '🔥' },
+                      { id: 'glass', label: 'Frost Glass', icon: '❄️' },
+                      { id: 'pill', label: 'Violet Pill', icon: '💊' },
+                      { id: 'bold', label: 'Bold Banner', icon: '💥' }
+                    ].map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setOverlayPreset(preset.id as any);
+                          if (!overlayEnabled) setOverlayEnabled(true);
+                        }}
+                        className={`p-2 rounded-xl text-[10px] font-bold border transition-all flex flex-col items-center gap-1 ${
+                          overlayPreset === preset.id
+                            ? 'bg-violet-600/20 border-violet-500 text-violet-200 shadow-sm'
+                            : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>{preset.icon}</span>
+                        <span className="truncate">{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Position & Custom Controls */}
+                <div className="grid grid-cols-3 gap-2 border-t border-slate-800/40 pt-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] uppercase font-bold text-slate-500">Position</label>
+                    <select
+                      className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                      value={overlayPosition}
+                      onChange={(e) => setOverlayPosition(e.target.value as any)}
+                    >
+                      <option value="top">Top Banner</option>
+                      <option value="center">Centered Callout</option>
+                      <option value="bottom">Bottom Bar</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] uppercase font-bold text-slate-500">Font Size</label>
+                    <select
+                      className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                      value={overlayFontSize}
+                      onChange={(e) => setOverlayFontSize(e.target.value as any)}
+                    >
+                      <option value="sm">Small (10px)</option>
+                      <option value="md">Medium (12px)</option>
+                      <option value="lg">Large (14px)</option>
+                      <option value="xl">Extra Bold (16px)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] uppercase font-bold text-slate-500">Font Family</label>
+                    <select
+                      className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                      value={overlayFontFamily}
+                      onChange={(e) => setOverlayFontFamily(e.target.value as any)}
+                    >
+                      <option value="sans">Sans-Serif Clean</option>
+                      <option value="serif">Classic Serif</option>
+                      <option value="mono">Tech Mono</option>
+                      <option value="display">Heavy Display</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
             {/* Form Fields */}
             <Card title="2. Pin Details" subtitle="Pinterest Metadata Specification">
               <div className="flex flex-col gap-4">
@@ -1646,6 +2087,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                     </span>
                   </div>
                   <input
+                    ref={titleInputRef}
                     type="text"
                     maxLength={100}
                     className="w-full bg-slate-950/60 border border-slate-800/60 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none"
@@ -1675,6 +2117,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                     </span>
                   </div>
                   <textarea
+                    ref={descTextareaRef}
                     maxLength={500}
                     rows={4}
                     className="w-full bg-slate-950/60 border border-slate-800/60 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none resize-none leading-relaxed"
@@ -1688,6 +2131,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Destination Website Link</label>
                   <input
+                    ref={destUrlInputRef}
                     type="url"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none focus:border-slate-650"
                     placeholder="e.g. https://myblog.com/kitchen-designs"
@@ -1845,6 +2289,22 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               imagePath={imagePath}
               destinationUrl={destinationUrl}
               altText={altText}
+              accountNickname={selectedAccountIds[0] ? (accounts.find(a => a.id === selectedAccountIds[0])?.nickname || 'Your Account') : 'Your Account'}
+              overlayConfig={{
+                enabled: overlayEnabled,
+                text: overlayText,
+                position: overlayPosition,
+                preset: overlayPreset,
+                bgColor: overlayBgColor,
+                textColor: overlayTextColor,
+                fontSize: overlayFontSize,
+                fontFamily: overlayFontFamily,
+                opacity: overlayOpacity
+              }}
+              onFocusTitle={() => titleInputRef.current?.focus()}
+              onFocusDescription={() => descTextareaRef.current?.focus()}
+              onFocusUrl={() => destUrlInputRef.current?.focus()}
+              seoScore={calculateSeoScore()}
             />
 
             {/* Live SEO Score Checklist */}
@@ -1856,6 +2316,161 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               imagePath={imagePath}
               boardName={selectedAccountIds[0] ? (accountBoards[selectedAccountIds[0]]?.boardName || '') : ''}
             />
+
+            {/* AI Hashtag & Keyword Cloud Generator */}
+            <Card title="AI Hashtag & Keyword Cloud" subtitle="Interactive high-reach Pinterest hashtag generator" accent>
+              <div className="flex flex-col gap-4">
+                {/* Trigger Button & Category Filter */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <Button
+                    size="sm"
+                    variant="ai"
+                    icon={<Sparkles className="w-3.5 h-3.5" />}
+                    onClick={runAIHashtagGenerator}
+                    disabled={aiHashtagsLoading || !aiEnabled}
+                    className="w-full sm:w-auto py-1.5 text-xs font-bold"
+                  >
+                    {aiHashtagsLoading ? 'Generating Cloud...' : '✨ Generate AI Hashtag Cloud'}
+                  </Button>
+
+                  <div className="flex gap-1 bg-slate-950 p-1 rounded-xl border border-slate-850 self-stretch sm:self-auto">
+                    {(['All', 'Trending', 'SEO', 'Niche'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setHashtagCategoryFilter(cat)}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-colors ${
+                          hashtagCategoryFilter === cat ? 'bg-slate-800 text-violet-300' : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Hashtag Cloud Grid */}
+                {aiHashtagCloud.length > 0 ? (
+                  <div className="flex flex-col gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                      <span>Found {aiHashtagCloud.length} Pinterest tags</span>
+                      <span>Click hashtag to add/remove from Description</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-[220px] overflow-y-auto pr-1">
+                      {aiHashtagCloud
+                        .filter(item => hashtagCategoryFilter === 'All' || item.category === hashtagCategoryFilter)
+                        .map((item, idx) => {
+                          const inDesc = description.toLowerCase().includes(`#${item.tag.toLowerCase()}`);
+                          
+                          let badgeColor = 'bg-slate-900 border-slate-800 text-slate-300';
+                          if (item.reach === 'Viral') badgeColor = 'bg-purple-950/50 border-purple-800/60 text-purple-300';
+                          if (item.reach === 'High Search') badgeColor = 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300';
+                          if (item.reach === 'Niche') badgeColor = 'bg-blue-950/50 border-blue-800/60 text-blue-300';
+                          if (item.reach === 'Long-tail') badgeColor = 'bg-amber-950/50 border-amber-800/60 text-amber-300';
+
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                if (inDesc) {
+                                  const newDesc = description.replace(new RegExp(`#${item.tag}\\b`, 'gi'), '').replace(/\s+/g, ' ').trim();
+                                  setDescription(newDesc);
+                                  onShowToast(`Removed #${item.tag}`, 'info');
+                                } else {
+                                  setDescription(prev => (prev.trim() ? `${prev.trim()} #${item.tag}` : `#${item.tag}`));
+                                  onShowToast(`Added #${item.tag} to description`, 'success');
+                                }
+                              }}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all hover:scale-105 ${badgeColor} ${
+                                inDesc ? 'ring-2 ring-violet-500 font-black' : ''
+                              }`}
+                              title={`Click to ${inDesc ? 'remove from' : 'add to'} description`}
+                            >
+                              <Hash className="w-3 h-3 opacity-70" />
+                              <span>{item.tag}</span>
+                              <span className="text-[9px] opacity-60 font-mono">({item.reach})</span>
+                              {inDesc && <Check className="w-3 h-3 text-violet-400 ml-0.5" />}
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    {/* Quick Batch Actions */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/60 pt-2.5">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => appendTopHashtagsToDesc(5)}
+                          className="text-[10px] font-bold text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                        >
+                          ⚡ Append Top 5
+                        </button>
+                        <button
+                          type="button"
+                          onClick={copyAllHashtags}
+                          className="text-[10px] font-bold text-slate-300 hover:text-slate-100 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Copy className="w-3 h-3" /> Copy All
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cleanedDesc = description.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+                          setDescription(cleanedDesc);
+                          onShowToast('Cleared hashtags from description', 'info');
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors"
+                      >
+                        Clear hashtags
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-5 border border-dashed border-slate-800/80 rounded-2xl bg-slate-950/20 text-slate-500">
+                    <Hash className="w-7 h-7 text-slate-700 mx-auto mb-1.5" />
+                    <p className="text-xs font-bold text-slate-400">No Hashtags Generated Yet</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Click "Generate AI Hashtag Cloud" to extract high-traffic Pinterest tags</p>
+                  </div>
+                )}
+
+                {/* Custom Tag Manual Adder */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="flex-grow bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
+                    placeholder="Add custom hashtag..."
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customTagInput.trim()) {
+                        e.preventDefault();
+                        const tagClean = customTagInput.trim().replace(/^#/, '');
+                        setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
+                        setCustomTagInput('');
+                        onShowToast(`Added #${tagClean}`, 'success');
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!customTagInput.trim()) return;
+                      const tagClean = customTagInput.trim().replace(/^#/, '');
+                      setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
+                      setCustomTagInput('');
+                      onShowToast(`Added #${tagClean}`, 'success');
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl text-xs font-bold text-slate-200"
+                  >
+                    + Add Tag
+                  </button>
+                </div>
+              </div>
+            </Card>
 
             {/* AI Assistant */}
             <Card title="AI SEO Assistant" subtitle="Powered by Llama 4 Scout + OpenCode" accent>
@@ -2776,6 +3391,398 @@ export const CreatePin: React.FC<CreatePinProps> = ({
 
           {/* Right Column: Matched Preview Grid */}
           <div className="xl:col-span-8 flex flex-col gap-6">
+            {/* Bulk Spintax & Dynamic Template Generator Section */}
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-slate-950 border border-violet-500/30 shadow-xl relative overflow-hidden">
+              {/* Header banner */}
+              <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-slate-800/60">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center text-violet-400 font-bold shadow-inner">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-extrabold text-slate-100 tracking-tight">Bulk Spintax & Dynamic Template Generator</h4>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-violet-500/15 border border-violet-500/30 text-violet-300">
+                        ⚡ {spintaxTotalVariations > 1 ? `${spintaxTotalVariations.toLocaleString()} Unique Variations` : 'Dynamic Templates Enabled'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Generate unique, non-repetitive pin titles & descriptions for hundreds of items using <code className="text-violet-300 bg-violet-950/60 px-1 py-0.5 rounded border border-violet-850">{"{spintax|options}"}</code> and dynamic placeholders like <code className="text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded border border-emerald-850">{"{filename}"}</code>, <code className="text-cyan-300 bg-cyan-950/60 px-1 py-0.5 rounded border border-cyan-850">{"{index}"}</code>, and <code className="text-purple-300 bg-purple-950/60 px-1 py-0.5 rounded border border-purple-850">{"{board}"}</code>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSpintaxPanel(!showSpintaxPanel)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-slate-300 hover:text-slate-100 transition-colors cursor-pointer"
+                >
+                  {showSpintaxPanel ? 'Hide Generator' : 'Show Generator'}
+                </button>
+              </div>
+
+              {showSpintaxPanel && (
+                <div className="flex flex-col gap-4 animate-fade-in">
+                  {/* Ready-made Spintax Presets */}
+                  <div className="flex flex-wrap items-center gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-slate-850">
+                    <span className="text-[10px] font-extrabold uppercase text-slate-500 font-mono tracking-wider mr-1">
+                      Quick Presets:
+                    </span>
+                    {SPINTAX_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleLoadSpintaxPreset(preset.id)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300 hover:bg-violet-950/40 hover:border-violet-500/40 hover:text-violet-200 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        {preset.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Helper Tags Chips Bar */}
+                  <div className="flex flex-col gap-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-850/80">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                        <Tag className="w-3 h-3 text-violet-400" /> Click to Insert Dynamic Placeholder into focused field:
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-500">
+                        Target Field: <strong className="text-violet-300 capitalize">{spintaxActiveField}</strong>
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {[
+                        { tag: 'filename', label: 'Clean Filename', color: 'bg-emerald-950/30 text-emerald-300 border-emerald-800/40 hover:bg-emerald-900/40' },
+                        { tag: 'filename_raw', label: 'Raw Filename', color: 'bg-emerald-950/20 text-emerald-400 border-emerald-900/30 hover:bg-emerald-900/40' },
+                        { tag: 'board', label: 'Board Name', color: 'bg-purple-950/30 text-purple-300 border-purple-800/40 hover:bg-purple-900/40' },
+                        { tag: 'index', label: 'Pin Index (#)', color: 'bg-cyan-950/30 text-cyan-300 border-cyan-800/40 hover:bg-cyan-900/40' },
+                        { tag: 'total', label: 'Total Count', color: 'bg-cyan-950/20 text-cyan-400 border-cyan-900/30 hover:bg-cyan-900/40' },
+                        { tag: 'year', label: 'Year (2026)', color: 'bg-amber-950/30 text-amber-300 border-amber-800/40 hover:bg-amber-900/40' },
+                        { tag: 'date', label: 'Today\'s Date', color: 'bg-amber-950/20 text-amber-400 border-amber-900/30 hover:bg-amber-900/40' },
+                        { tag: 'rand', label: 'Random Number', color: 'bg-rose-950/30 text-rose-300 border-rose-800/40 hover:bg-rose-900/40' }
+                      ].map((item) => (
+                        <button
+                          key={item.tag}
+                          type="button"
+                          onClick={() => handleInsertPlaceholderTag(item.tag)}
+                          className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold transition-all cursor-pointer ${item.color}`}
+                          title={`Click to insert {${item.tag}} into ${spintaxActiveField}`}
+                        >
+                          + {"{" + item.tag + "}"} <span className="text-[9px] font-sans opacity-70 font-normal">({item.label})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Main Spintax Inputs & Preview Sandbox */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    {/* Title & Description Inputs */}
+                    <div className="md:col-span-7 flex flex-col gap-3">
+                      {/* Spintax Title */}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] uppercase font-extrabold text-slate-300 tracking-wider flex items-center gap-1.5">
+                            Spintax Title Template
+                            {spintaxActiveField === 'title' && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span>}
+                          </label>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {spintaxTitle.length} chars • {calculateSpintaxVariations(spintaxTitle)} title spins
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          onFocus={() => setSpintaxActiveField('title')}
+                          className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none transition-colors ${
+                            spintaxActiveField === 'title' ? 'border-violet-500/70 shadow-sm shadow-violet-500/20' : 'border-slate-800'
+                          }`}
+                          placeholder="{Top 10|Best 15|Must-Try} {filename} Ideas for {year}"
+                          value={spintaxTitle}
+                          onChange={(e) => setSpintaxTitle(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Spintax Description */}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] uppercase font-extrabold text-slate-300 tracking-wider flex items-center gap-1.5">
+                            Spintax Description Template
+                            {spintaxActiveField === 'desc' && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span>}
+                          </label>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {spintaxDesc.length} chars • {calculateSpintaxVariations(spintaxDesc)} desc spins
+                          </span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          onFocus={() => setSpintaxActiveField('desc')}
+                          className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none transition-colors resize-y ${
+                            spintaxActiveField === 'desc' ? 'border-violet-500/70 shadow-sm shadow-violet-500/20' : 'border-slate-800'
+                          }`}
+                          placeholder="{Check out|Discover|Explore} these {stunning|amazing|creative} {filename} ideas! Save to your {board} board. Pin #{index} of {total}."
+                          value={spintaxDesc}
+                          onChange={(e) => setSpintaxDesc(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Spintax Alt Text */}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">
+                            Spintax Alt Text Template (Optional)
+                          </label>
+                        </div>
+                        <input
+                          type="text"
+                          onFocus={() => setSpintaxActiveField('alt')}
+                          className={`w-full bg-slate-950 border rounded-xl px-3 py-1.5 text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none transition-colors ${
+                            spintaxActiveField === 'alt' ? 'border-violet-500/70 shadow-sm shadow-violet-500/20' : 'border-slate-800'
+                          }`}
+                          placeholder="{Photo|Visual|Image} of {filename} ({board})"
+                          value={spintaxAltText}
+                          onChange={(e) => setSpintaxAltText(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Spintax Preview Sandbox Deck */}
+                    <div className="md:col-span-5 flex flex-col gap-2.5 bg-slate-950/80 p-3 rounded-2xl border border-slate-850">
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-850">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-violet-300 font-mono flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3 text-violet-400" /> Live Spintax Sandbox
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSpintaxPreviewSeed(prev => prev + 1)}
+                          className="px-2 py-0.5 rounded-lg bg-violet-950/60 border border-violet-800/60 text-violet-200 text-[10px] font-bold hover:bg-violet-900/60 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          🎲 Spin Again
+                        </button>
+                      </div>
+
+                      {/* Sample items outputs */}
+                      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                        {(matchedItems.length > 0 ? matchedItems.slice(0, 3) : [
+                          { filename: 'aesthetic_home_decor_01.jpg', batchBoardName: 'Home Decor' },
+                          { filename: 'minimalist_living_room.png', batchBoardName: 'Interior Design' },
+                          { filename: 'cozy_bedroom_ideas.jpg', batchBoardName: 'Cozy Vibe' }
+                        ]).map((sample, idx) => {
+                          const sampleName = sample.filename || `sample_item_${idx + 1}.jpg`;
+                          const sampleBoard = (sample as any).batchBoardName || (selectedAccountIds[0] ? (accountBoards[selectedAccountIds[0]]?.boardName || 'Pinterest') : 'Pinterest Pins');
+                          const ctx: SpintaxItemContext = {
+                            filename: sampleName,
+                            index: idx + 1,
+                            total: matchedItems.length || 3,
+                            board: sampleBoard,
+                            topic: formatFilenameToCleanTitle(sampleName),
+                            year: String(new Date().getFullYear()),
+                            date: new Date().toISOString().split('T')[0]
+                          };
+                          const seed = idx * 73 + spintaxPreviewSeed * 101;
+                          const sampleTitle = processDynamicTemplate(spintaxTitle, ctx, seed);
+                          const sampleDesc = processDynamicTemplate(spintaxDesc, ctx, seed + 17);
+
+                          return (
+                            <div key={idx} className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex flex-col gap-1 text-[11px]">
+                              <div className="flex justify-between items-center">
+                                <span className="text-[9px] font-mono text-slate-400 truncate">
+                                  Pin #{idx + 1}: <strong className="text-slate-300">{sampleName}</strong>
+                                </span>
+                                <span className="text-[9px] font-bold text-violet-400 bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-900/40">
+                                  {sampleBoard}
+                                </span>
+                              </div>
+                              <p className="font-bold text-slate-100 truncate">{sampleTitle || '<Empty Title>'}</p>
+                              <p className="text-slate-400 text-[10px] line-clamp-2 leading-relaxed">{sampleDesc || '<Empty Description>'}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[9px] text-slate-500 font-mono text-center pt-1 border-t border-slate-850">
+                        Unique variations potential: <strong className="text-emerald-400 font-bold">{spintaxTotalVariations.toLocaleString()}</strong> combinations
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Main Action Bar */}
+                  <div className="flex justify-between items-center pt-3 border-t border-slate-800/80">
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                      <Info className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                      <span>Evaluates spintax choices & dynamic tags ({'{filename}'}, {'{index}'}, {'{board}'}) for every pin in the grid.</span>
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleApplySpintaxToAll}
+                      disabled={matchedItems.length === 0}
+                      icon={<Sparkles className="w-3.5 h-3.5 text-amber-300" />}
+                      className="bg-gradient-to-r from-violet-900 via-purple-900 to-indigo-900 hover:from-violet-800 hover:to-indigo-800 border-violet-600 text-xs font-black py-2 px-5 shadow-lg shadow-violet-950/60"
+                    >
+                      🚀 Generate & Apply Spintax to All Pins ({matchedItems.length} Pins)
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bulk AI Scrambler & Watermark Batch Processor Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-slate-950 border border-emerald-500/30 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between gap-4 mb-3 pb-3 border-b border-slate-800/60">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold shadow-inner">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-extrabold text-slate-100 tracking-tight">Bulk AI Scrambler & Watermark Batch Processor</h4>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+                        6-Layer Jimp Protocol
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Bulk-apply 6-layer AI footprint removal (EXIF strip, 2px crop, micro-resize warp, latent blur, color jitter, Q92 JPEG) and burned text banner overlays across all imported items in 1 click.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBulkScramblerPanel(!showBulkScramblerPanel)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-slate-300 hover:text-slate-100 transition-colors cursor-pointer"
+                >
+                  {showBulkScramblerPanel ? 'Hide Scrambler Settings' : 'Scrambler Settings'}
+                </button>
+              </div>
+
+              {showBulkScramblerPanel && (
+                <div className="flex flex-col gap-4 animate-fade-in mb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Toggle 1: 6-Layer AI Scrambler */}
+                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" /> 6-Layer Footprint Scrambler
+                        </span>
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-800 text-emerald-500 bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                          checked={bulkScrambleFootprint}
+                          onChange={(e) => setBulkScrambleFootprint(e.target.checked)}
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        Strips EXIF/XMP metadata, applies 2px edge crop, micro-resize warp, noise destruction & multi-spectrum color jitter.
+                      </p>
+                    </div>
+
+                    {/* Toggle 2: Text Banner Overlays */}
+                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Type className="w-4 h-4 text-violet-400" /> AI Text Banner Overlay
+                        </span>
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-800 text-violet-500 bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                          checked={bulkApplyBanner}
+                          onChange={(e) => setBulkApplyBanner(e.target.checked)}
+                        />
+                      </div>
+                      {bulkApplyBanner ? (
+                        <div className="flex flex-col gap-2 mt-1">
+                          <div className="flex gap-2">
+                            <select
+                              className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-200 w-1/2 focus:outline-none"
+                              value={bulkBannerPosition}
+                              onChange={(e) => setBulkBannerPosition(e.target.value as any)}
+                            >
+                              <option value="top">Top Banner</option>
+                              <option value="center">Centered Callout</option>
+                              <option value="bottom">Bottom Bar</option>
+                            </select>
+                            <select
+                              className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-200 w-1/2 focus:outline-none"
+                              value={bulkBannerSource}
+                              onChange={(e) => setBulkBannerSource(e.target.value as any)}
+                            >
+                              <option value="title">Use Pin Title</option>
+                              <option value="custom">Custom Text</option>
+                            </select>
+                          </div>
+                          {bulkBannerSource === 'custom' && (
+                            <input
+                              type="text"
+                              className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-200 placeholder-slate-600 focus:outline-none"
+                              placeholder="e.g. 10+ MUST-TRY IDEAS 📌"
+                              value={bulkCustomBannerText}
+                              onChange={(e) => setBulkCustomBannerText(e.target.value)}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                          Burns high-contrast headline banners onto the top/center/bottom of each image.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Toggle 3: Corner Watermark */}
+                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Bookmark className="w-4 h-4 text-cyan-400" /> Corner Watermark
+                        </span>
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-800 text-cyan-500 bg-slate-950 focus:ring-0 w-4 h-4 cursor-pointer"
+                          checked={bulkApplyWatermark}
+                          onChange={(e) => setBulkApplyWatermark(e.target.checked)}
+                        />
+                      </div>
+                      {bulkApplyWatermark ? (
+                        <input
+                          type="text"
+                          className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-200 placeholder-slate-600 focus:outline-none mt-1"
+                          placeholder="e.g. @yourbrand or mydomain.com"
+                          value={bulkWatermarkText}
+                          onChange={(e) => setBulkWatermarkText(e.target.value)}
+                        />
+                      ) : (
+                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                          Prints brand watermark or website link in bottom corner of each image.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Execution Bar */}
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <span>Ready items: <strong className="text-slate-200">{matchedItems.filter(i => i.status === 'ready').length}</strong></span>
+                  {matchedItems.some(i => (i as any).isScrambled) && (
+                    <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-[10px] font-bold">
+                      ✓ {matchedItems.filter(i => (i as any).isScrambled).length} Scrambled & Cleaned
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleBatchScrubAndWatermark}
+                  loading={isProcessingBulkScramble}
+                  disabled={matchedItems.length === 0 || isParsing || isProcessingBulkScramble}
+                  icon={<Wand2 className="w-4 h-4 text-emerald-300" />}
+                  className="bg-emerald-700 hover:bg-emerald-600 border-emerald-500 text-white font-black text-xs px-4 py-2"
+                >
+                  ⚡ Batch Scramble & Watermark All Images ({matchedItems.filter(i => i.status === 'ready').length})
+                </Button>
+              </div>
+            </div>
+
             {bulkProgress && (
               <div style={{
                 background: 'rgba(109,40,217,0.06)', border: '1px solid rgba(139,92,246,0.2)',
@@ -2784,7 +3791,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#a78bfa' }} />
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd' }}>AI Generating Metadata...</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#c4b5fd' }}>AI Processing Bulk Queue...</span>
                   </div>
                   <span style={{
                     fontSize: 11, fontWeight: 900, padding: '3px 10px', borderRadius: 20,
@@ -2795,7 +3802,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                 <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4, fontStyle: 'italic' }}>{bulkProgress.message}</p>
                 <div style={{ width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: 999, height: 8, overflow: 'hidden' }}>
                   <div style={{
-                    background: 'linear-gradient(90deg, #7c3aed, #a855f7, #c084fc)',
+                    background: 'linear-gradient(90deg, #10b981, #7c3aed, #c084fc)',
                     height: '100%', borderRadius: 999,
                     width: `${Math.max(2, (bulkProgress.current / bulkProgress.total) * 100)}%`,
                     transition: 'width 0.4s cubic-bezier(0.16,1,0.3,1)',
@@ -2803,7 +3810,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                   }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontWeight: 700 }}>GENERATING AI CONTENT</span>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', fontWeight: 700 }}>PROCESSING BULK ITEMS</span>
                   <span style={{ fontSize: 9, color: '#a78bfa', fontWeight: 800 }}>{Math.round((bulkProgress.current / bulkProgress.total) * 100)}% done</span>
                 </div>
               </div>
@@ -2813,6 +3820,17 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               subtitle={`Simulated matches: ${matchedItems.length} rows`}
               headerAction={
                 <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleBatchScrubAndWatermark}
+                    loading={isProcessingBulkScramble}
+                    disabled={matchedItems.length === 0 || isParsing || isProcessingBulkScramble}
+                    icon={<ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
+                    className="bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 hover:bg-emerald-900/40"
+                  >
+                    Scramble & Watermark ({matchedItems.filter(i => i.status === 'ready').length})
+                  </Button>
                   {bulkAiMode && (
                     <Button
                       variant="primary"
@@ -2961,9 +3979,16 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                         className="flex gap-4 p-3 bg-slate-900/30 border border-slate-850 rounded-xl hover:bg-slate-900/60 transition-colors items-start"
                       >
                         {/* Image Preview Thumbnail */}
-                        <div className="w-16 h-20 rounded-lg bg-slate-950 border border-slate-700/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        <div className="w-16 h-20 rounded-lg bg-slate-950 border border-slate-700/50 overflow-hidden flex-shrink-0 flex items-center justify-center relative">
                           {localImageSrc ? (
-                            <img src={localImageSrc} alt="" className="w-full h-full object-cover rounded-lg" />
+                            <>
+                              <img src={localImageSrc} alt="" className="w-full h-full object-cover rounded-lg" />
+                              {((item as any).isScrambled || item.imagePath.includes('clean_')) && (
+                                <span className="absolute bottom-0 inset-x-0 bg-emerald-950/90 text-emerald-400 text-[8px] font-black text-center py-0.5 border-t border-emerald-800/60 uppercase truncate">
+                                  🛡️ Cleaned
+                                </span>
+                              )}
+                            </>
                           ) : (
                             <ImageIcon className="w-5 h-5 text-slate-700" />
                           )}

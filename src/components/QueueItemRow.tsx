@@ -1,8 +1,9 @@
 import React from 'react';
 import { QueueJob, Account } from '../types';
-import { Trash2, RotateCcw, Image, ExternalLink, FileText } from 'lucide-react';
+import { Trash2, RotateCcw, Image as ImageIcon, ExternalLink, FileText } from 'lucide-react';
 import { Button } from './Button';
 import { api } from '../services/api';
+import { convert12hTo24h, getCountdownText } from '../utils/dateTime';
 
 interface QueueItemRowProps {
   job: QueueJob;
@@ -15,83 +16,6 @@ interface QueueItemRowProps {
   onUpdateSchedule?: (id: string, date: string, time: string) => void;
   onUnschedule?: (id: string) => void;
 }
-
-const convert12hTo24h = (time12: string): string => {
-  if (!time12) return '';
-  const clean = time12.trim().toUpperCase();
-  if (!clean.endsWith('AM') && !clean.endsWith('PM')) {
-    return clean;
-  }
-  const isPm = clean.endsWith('PM');
-  const parts = clean.substring(0, clean.length - 2).trim().split(':');
-  let hour = parseInt(parts[0], 10);
-  const minute = parseInt(parts[1], 10);
-  if (isNaN(hour) || isNaN(minute)) return '';
-  if (isPm && hour !== 12) hour += 12;
-  if (!isPm && hour === 12) hour = 0;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-};
-
-const getCountdownText = (dateStr: string, timeStr: string) => {
-  const clean = timeStr.trim().toUpperCase();
-  let hour = 0, min = 0;
-  if (clean.endsWith('AM') || clean.endsWith('PM')) {
-    const isPm = clean.endsWith('PM');
-    const parts = clean.substring(0, clean.length - 2).trim().split(':');
-    hour = parseInt(parts[0], 10) || 0;
-    min = parseInt(parts[1], 10) || 0;
-    if (isPm && hour !== 12) hour += 12;
-    if (!isPm && hour === 12) hour = 0;
-  } else {
-    const parts = clean.split(':');
-    hour = parseInt(parts[0], 10) || 0;
-    min = parseInt(parts[1], 10) || 0;
-  }
-
-  // Parse date string (supports both YYYY-MM-DD and MM-DD-YYYY or DD-MM-YYYY with either - or /)
-  const dateParts = dateStr.split(/[-/]/).map(Number);
-  let year = NaN, month = NaN, day = NaN;
-
-  if (dateParts.length === 3) {
-    if (dateParts[0] > 1000) {
-      // YYYY-MM-DD or YYYY/MM/DD
-      year = dateParts[0];
-      month = dateParts[1];
-      day = dateParts[2];
-    } else if (dateParts[2] > 1000) {
-      // MM-DD-YYYY or DD-MM-YYYY
-      if (dateParts[0] > 12) {
-        day = dateParts[0];
-        month = dateParts[1];
-      } else {
-        month = dateParts[0];
-        day = dateParts[1];
-      }
-      year = dateParts[2];
-    }
-  }
-
-  const scheduledDate = !isNaN(year) && !isNaN(month) && !isNaN(day)
-    ? new Date(year, month - 1, day, hour, min)
-    : new Date(`${dateStr} ${timeStr}`);
-
-  const now = new Date();
-  const diffMs = scheduledDate.getTime() - now.getTime();
-  if (diffMs <= 0) {
-    return "Overdue — posting soon";
-  }
-  const diffSecs = Math.floor(diffMs / 1000);
-  const days = Math.floor(diffSecs / 86400);
-  const hours = Math.floor((diffSecs % 86400) / 3600);
-  const minutes = Math.floor((diffSecs % 3600) / 60);
-
-  const parts = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0 || days > 0) parts.push(`${hours}h`);
-  parts.push(`${minutes}m`);
-
-  return `Posts in ${parts.join(' ')}`;
-};
 
 export const QueueItemRow: React.FC<QueueItemRowProps> = ({
   job,
@@ -119,7 +43,7 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
   }, [job.scheduledDate, job.scheduledTime]);
 
   React.useEffect(() => {
-    if (job.status !== 'scheduled') return;
+    if (job.status !== 'scheduled') return undefined;
     const interval = setInterval(() => {
       setTick(t => t + 1);
     }, 10000);
@@ -208,7 +132,7 @@ export const QueueItemRow: React.FC<QueueItemRowProps> = ({
                 }}
               />
             ) : (
-              <Image className="w-5 h-5 text-slate-700" />
+              <ImageIcon className="w-5 h-5 text-slate-700" />
             )}
           </div>
 

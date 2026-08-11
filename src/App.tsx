@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { version } from '../package.json';
 import { 
   LayoutDashboard, Users, FolderHeart, PlusCircle, 
@@ -304,10 +304,10 @@ export default function App() {
             <Dashboard accounts={accounts} drafts={drafts} queue={queue} logs={logs} onNavigate={handleNavigate} onRefresh={refreshAll} isMockMode={isMockMode} />
           )}
           {activeScreen === 'accounts' && (
-          <Accounts accounts={accounts} onSaveAccount={handleSaveAccount} onDeleteAccount={handleDeleteAccount} onOpenSession={handleOpenSession} onVerifySession={handleVerifySession} onRefreshAccounts={fetchAccounts} onShowToast={showToast} browserStatus={browserStatus} />
+            <Accounts accounts={accounts} queue={queue} onSaveAccount={handleSaveAccount} onDeleteAccount={handleDeleteAccount} onOpenSession={handleOpenSession} onVerifySession={handleVerifySession} onRefreshAccounts={fetchAccounts} onShowToast={showToast} browserStatus={browserStatus} />
           )}
           {activeScreen === 'boards' && (
-            <Boards accounts={accounts} onShowToast={showToast} />
+            <Boards accounts={accounts} queue={queue} onShowToast={showToast} />
           )}
           <div style={{ display: activeScreen === 'create' ? 'block' : 'none' }}>
             <CreatePin accounts={accounts} drafts={drafts} onSaveDraft={handleSaveDraft} onAddQueueJob={handleAddQueueJob} onNavigate={handleNavigate} onShowToast={showToast} editingDraft={editingDraft} clearEditingDraft={() => setEditingDraft(null)} activeScreen={activeScreen} />

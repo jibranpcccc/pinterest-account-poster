@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPinterestSession: (accountId: string) => ipcRenderer.invoke('pinterest:openSession', accountId),
   verifyPinterestSession: (accountId: string) => ipcRenderer.invoke('pinterest:verifySession', accountId),
   fetchAnalytics: (accountId: string) => ipcRenderer.invoke('pinterest:fetchAnalytics', accountId),
+  getAnalyticsHistory: (accountId?: string) => ipcRenderer.invoke('db:getAnalyticsHistory', accountId),
+  saveAnalyticsSnapshot: (snapshot: any) => ipcRenderer.invoke('db:saveAnalyticsSnapshot', snapshot),
+  seedAnalyticsHistory: (accountId: string) => ipcRenderer.invoke('db:seedAnalyticsHistory', accountId),
+
 
   // Repin
   getRepinJobs: () => ipcRenderer.invoke('db:getRepinJobs'),
@@ -58,6 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // AI Provider
   aiCall: (action: string, payload: any) => ipcRenderer.invoke('ai:call', action, payload),
+  batchScrubImages: (items: any[], options: any) => ipcRenderer.invoke('ai:batchScrubImages', items, options),
   aiDiagnose: () => ipcRenderer.invoke('ai:diagnose'),
   toggleFleet: (enabled: boolean) => ipcRenderer.invoke('fleet:toggle', enabled),
   getFleetStatus: () => ipcRenderer.invoke('fleet:status'),

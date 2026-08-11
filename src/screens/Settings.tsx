@@ -44,7 +44,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiBaseUrl, setAiBaseUrl] = useState('https://api.opencode.dev/v1');
-  const [aiModel, setAiModel] = useState('opencode-big-pickle');
+  const [aiModel, setAiModel] = useState('opencode-mimo-v2.5');
   const [aiTimeout, setAiTimeout] = useState(30);
 
   // Watermark Settings

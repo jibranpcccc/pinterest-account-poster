@@ -296,24 +296,24 @@ function buildVisualHairDetail(visionJSON: any): string {
 }
 
 /** Convert board name into a clean, short Pinterest-style hashtag (max 4 words) */
-function boardToHashtag(bd: string): string {
-  const words = bd
-    .replace(/[^a-z0-9\s]/gi, '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 4);
-  return '#' + words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-}
+// function boardToHashtag(bd: string): string {
+//   const words = bd
+//     .replace(/[^a-z0-9\s]/gi, '')
+//     .split(/\s+/)
+//     .filter(Boolean)
+//     .slice(0, 4);
+//   return '#' + words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+// }
 
 /** Build a secondary hashtag from hair detail (max 3 words) */
-function hairDetailToHashtag(detail: string): string {
-  const words = detail
-    .replace(/[^a-z0-9\s]/gi, '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 3);
-  return '#' + words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-}
+// function hairDetailToHashtag(detail: string): string {
+//   const words = detail
+//     .replace(/[^a-z0-9\s]/gi, '')
+//     .split(/\s+/)
+//     .filter(Boolean)
+//     .slice(0, 3);
+//   return '#' + words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+// }
 
 /** Clean known AI noise from title/description */
 function cleanText(text: string): string {
@@ -523,7 +523,7 @@ export class OpenCodeProvider {
       enabled: settings.aiEnabled !== false,
       apiKey: settings.aiApiKey || process.env.OPENCODE_API_KEY || '',
       baseUrl: settings.aiBaseUrl || process.env.OPENCODE_BASE_URL || 'https://api.opencode.dev/v1',
-      model: settings.aiModel || process.env.OPENCODE_MODEL || 'opencode-big-pickle',
+      model: settings.aiModel || process.env.OPENCODE_MODEL || 'opencode-mimo-v2.5',
       timeout: (settings.aiTimeout || 45) * 1000
     };
   }
@@ -630,7 +630,7 @@ Return ONLY a raw JSON array of 3 strings.`;
     } catch (e) {
       console.error('Failed to generate descriptions via AI:', e);
       const kw = input.keyword || input.topic || input.boardName || 'layered hair';
-      const board = input.boardName || 'hair styling';
+      // const board = input.boardName || 'hair styling';
       return [
         `${kw} creates soft movement and dimension that works on many face shapes. The stylist used face-framing pieces with lightweight ends for texture. Save this pin for your next hairstyle idea.`,
         `${kw} gives a clean finish that suits various face shapes. The cut includes soft shaping through the mid-lengths and shorter pieces around the face. Pin this look for your next hair appointment.`,
@@ -777,7 +777,7 @@ Return ONLY raw JSON:
     } catch (e) {
       console.error('Failed to generate complete SEO via AI:', e);
       const kw = input.keyword || input.topic || input.boardName || 'layered hair';
-      const board = input.boardName || input.topic || 'hair styling';
+      // const board = input.boardName || input.topic || 'hair styling';
       return {
         title: `${kw} On Wavy Hair With Face-Framing Layers`,
         description: `${kw} creates soft movement and dimension that works well with natural texture. The cut is lightweight through the ends with soft shaping. Save this pin for your next hairstyle idea.`,

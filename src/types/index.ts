@@ -28,6 +28,8 @@ export interface Draft {
   altText: string;
   notes: string;
   imagePath: string;
+  /** Optional AI-generated image prompt */
+  imagePrompt?: string;
   accountId?: string | null;
   boardName?: string | null;
   boardUrl?: string | null;
@@ -43,11 +45,14 @@ export interface QueueJob {
   boardName: string;
   boardUrl: string;
   imagePath: string;
+  /** Optional AI-generated image prompt */
+  imagePrompt?: string;
   title: string;
   description: string;
   destinationUrl: string;
   altText: string;
   notes: string;
+  // import { WebContents } from 'electron'; // unused
   status: 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'scheduled';
   errorMessage?: string | null;
   screenshotPath?: string | null;
@@ -93,3 +98,19 @@ export interface LogFilters {
   level?: Log['level'];
   search?: string;
 }
+
+export interface AnalyticsSnapshot {
+  id: string;
+  accountId: string;
+  followers: number;
+  monthlyViews: number;
+  impressions: number;
+  engagements: number;
+  outboundClicks: number;
+  saves: number;
+  followersRaw?: string;
+  monthlyViewsRaw?: string;
+  timestamp: string;
+  snapshotDate: string;
+}
+

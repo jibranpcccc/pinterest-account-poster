@@ -474,30 +474,44 @@ export class PublishExecutor {
 
       const boardBtnSelectors = [
         '[data-test-id="board-dropdown-select-button"]',
+        '[data-test-id="board-picker"]',
+        '[data-test-id="pin-builder-board-dropdown"]',
         'button:has-text("Choose a board")',
+        'button:has-text("Choose board")',
+        'button:has-text("Select board")',
         'div[data-test-id="board-dropdown-select-button"]',
-        'button[aria-label*="board" i]'
+        'button[aria-label*="board" i]',
+        'button[aria-label*="Select board" i]'
       ];
 
       let boardBtnClicked = false;
-      for (const sel of boardBtnSelectors) {
-        if (await page.locator(sel).first().isVisible().catch(() => false)) {
-          const btn = page.locator(sel).first();
-          await btn.scrollIntoViewIfNeeded().catch(() => {});
-          await btn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-          await btn.click();
-          boardBtnClicked = true;
-          break;
+      // Retry finding and clicking board button for up to 10 seconds in case page renders slowly
+      for (let attempt = 0; attempt < 20; attempt++) {
+        if (this.isStopped) throw new Error('STOPPED');
+        for (const sel of boardBtnSelectors) {
+          const loc = page.locator(sel).first();
+          if (await loc.isVisible().catch(() => false)) {
+            await loc.scrollIntoViewIfNeeded().catch(() => {});
+            await loc.click({ force: true }).catch(() => {});
+            boardBtnClicked = true;
+            break;
+          }
         }
+        if (boardBtnClicked) break;
+        await this.sleep(500);
       }
 
       if (boardBtnClicked) {
         // Wait for search input to appear
         let searchFound = false;
+        let activeSearchSelector = '';
         const boardSearchSelectors = [
           'input#pickerSearchField',
+          '[data-test-id="board-search-input"]',
           'input[aria-label*="Search through your boards" i]',
-          'input[type="search"][placeholder="Search"]'
+          'input[aria-label*="Search" i]',
+          'input[type="search"][placeholder*="Search" i]',
+          'input[placeholder*="Search" i]'
         ];
 
         for (let attempt = 0; attempt < 25; attempt++) {
@@ -506,6 +520,7 @@ export class PublishExecutor {
           for (const sel of boardSearchSelectors) {
             if (await page.locator(sel).first().isVisible().catch(() => false)) {
               searchFound = true;
+              activeSearchSelector = sel;
               break;
             }
           }
@@ -517,65 +532,150 @@ export class PublishExecutor {
           throw new Error('Board picker search field did not appear. Pinterest may still be loading.');
         }
 
-        // Type board name in search
-        const searchInputSelector = 'input#pickerSearchField, input[aria-label*="Search through your boards" i], input[type="search"][placeholder="Search"]';
-        await this.typeSlowly(page, searchInputSelector, job.boardName);
+        // Type board name in search using the discovered input selector
+        await this.typeSlowly(page, activeSearchSelector, job.boardName);
+        
+        // Wait for search results to settle/render
         await this.sleep(1200);
 
-        // FIXED: Use precise board item targeting — avoid over-broad div:has-text
-        // Pinterest renders board items with data-test-id="board-drop-item" 
+        // Helper slugify matching Pinterest board row data-test-id conventions
+        const slugifiedBoard = job.boardName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
         const preciseBoardLocators = [
+          page.locator(`[data-test-id="board-row-${slugifiedBoard}"]`).first(),
+          page.locator(`[data-test-id="board-row-${job.boardName}"]`).first(),
           page.locator(`[data-test-id="board-drop-item"]:has-text("${job.boardName}")`).first(),
+          page.locator(`[data-test-id="board-item"]:has-text("${job.boardName}")`).first(),
           page.locator(`div[title="${job.boardName}"]`).first(),
           page.locator(`div[title*="${job.boardName}" i]`).first(),
         ];
 
         let boardSelected = false;
-        for (const locator of preciseBoardLocators) {
-          if (await locator.isVisible().catch(() => false)) {
-            await locator.click();
-            boardSelected = true;
-            await this.sleep(getActionDelay());
-            break;
-          }
-        }
-
-        if (!boardSelected) {
-          // Fallback: look through all board drop items and find exact match
-          const allBoardItems = page.locator('[data-test-id="board-drop-item"]');
-          const count = await allBoardItems.count().catch(() => 0);
-          
-          for (let i = 0; i < count; i++) {
-            const item = allBoardItems.nth(i);
-            const text = await item.innerText().catch(() => '');
-            if (text.toLowerCase().includes(job.boardName.toLowerCase())) {
-              await item.click();
+        
+        // Poll for up to 4 seconds to account for search list async rendering
+        for (let attempt = 0; attempt < 8; attempt++) {
+          for (const locator of preciseBoardLocators) {
+            if (await locator.isVisible().catch(() => false)) {
+              await locator.click({ force: true });
               boardSelected = true;
               await this.sleep(getActionDelay());
               break;
             }
           }
+          if (boardSelected) break;
+          await this.sleep(500);
         }
 
         if (!boardSelected) {
-          // Try to auto-create board
-          const createBoardBtn = page.locator('button:has-text("Create board"), [data-test-id="create-board-button"]').first();
-          if (await createBoardBtn.isVisible().catch(() => false)) {
+          // Fallback 1: Search through all board drop/row items with exact case-insensitive match first
+          const itemSelectors = '[data-test-id="board-drop-item"], [data-test-id^="board-row-"], [data-test-id="board-item"], div[role="option"]';
+          const allBoardItems = page.locator(itemSelectors);
+          const count = await allBoardItems.count().catch(() => 0);
+          
+          const cleanTarget = job.boardName.trim().toLowerCase();
+          
+          // Pass 1: Exact match
+          for (let i = 0; i < count; i++) {
+            const item = allBoardItems.nth(i);
+            const text = (await item.innerText().catch(() => '')).trim().toLowerCase();
+            if (text === cleanTarget) {
+              await item.click({ force: true });
+              boardSelected = true;
+              await this.sleep(getActionDelay());
+              break;
+            }
+          }
+          
+          // Pass 2: Substring match if exact match didn't find any
+          if (!boardSelected) {
+            for (let i = 0; i < count; i++) {
+              const item = allBoardItems.nth(i);
+              const text = (await item.innerText().catch(() => '')).trim().toLowerCase();
+              if (text.includes(cleanTarget)) {
+                await item.click({ force: true });
+                boardSelected = true;
+                await this.sleep(getActionDelay());
+                break;
+              }
+            }
+          }
+        }
+
+        if (!boardSelected) {
+          // Try to auto-create board if board does not exist
+          const createBoardSelectors = [
+            'button:has-text("Create board")',
+            '[data-test-id="create-board-button"]',
+            '[data-test-id="board-picker-create-board"]',
+            'div[role="button"]:has-text("Create board")',
+            '[aria-label*="Create board" i]'
+          ];
+
+          let createBtnLoc = null;
+          for (const sel of createBoardSelectors) {
+            const loc = page.locator(sel).first();
+            if (await loc.isVisible().catch(() => false)) {
+              createBtnLoc = loc;
+              break;
+            }
+          }
+
+          if (createBtnLoc) {
             await this.db.addLog('info', `Board '${job.boardName}' not found. Creating it...`, { jobId: job.id });
             onProgress({ progress: 72, message: `Creating board '${job.boardName}'...`, status: 'running' });
-            await createBoardBtn.click();
-            await this.sleep(2000);
+            await createBtnLoc.click({ force: true });
+            await this.sleep(1500);
 
-            const nameInputSelector = 'input[name="boardName"], input[id*="board-name"], input[placeholder*="Places to Go"], input[type="text"]';
-            const nameInput = page.locator(nameInputSelector).first();
-            if (await nameInput.isVisible().catch(() => false)) {
-              await this.typeSlowly(page, nameInputSelector, job.boardName);
+            const modalInputSelectors = [
+              'div[role="dialog"] input[type="text"]',
+              'input#boardEditName',
+              'input[name="boardName"]',
+              'input[id*="board-name"]',
+              'input[placeholder*="Places to Go" i]',
+              'input[placeholder*="Like" i]',
+              'input[placeholder*="Add board name" i]'
+            ];
+
+            let foundModalInput = false;
+            let activeModalInputSel = '';
+            for (let attempt = 0; attempt < 10; attempt++) {
+              for (const sel of modalInputSelectors) {
+                if (await page.locator(sel).first().isVisible().catch(() => false)) {
+                  foundModalInput = true;
+                  activeModalInputSel = sel;
+                  break;
+                }
+              }
+              if (foundModalInput) break;
+              await this.sleep(300);
+            }
+
+            if (foundModalInput) {
+              await this.typeSlowly(page, activeModalInputSel, job.boardName);
               await this.sleep(800);
               
-              const submitBtn = page.locator('button:has-text("Create"), button[type="submit"], [data-test-id="board-dialog-submit-button"]').first();
-              if (await submitBtn.isVisible().catch(() => false)) {
-                await submitBtn.click();
-                await this.sleep(4000);
+              const submitBtnSelectors = [
+                '[data-test-id="board-dialog-submit-button"]',
+                'div[role="dialog"] button:has-text("Create")',
+                'div[role="dialog"] button[type="submit"]',
+                'button:has-text("Create")',
+                'button[type="submit"]'
+              ];
+
+              let submitBtnLoc = null;
+              for (const sel of submitBtnSelectors) {
+                const loc = page.locator(sel).first();
+                if (await loc.isVisible().catch(() => false)) {
+                  submitBtnLoc = loc;
+                  break;
+                }
+              }
+
+              if (submitBtnLoc) {
+                await submitBtnLoc.click({ force: true });
+                // Wait for dialog to close / board creation to settle
+                await this.sleep(3000);
+                boardSelected = true;
               } else {
                 throw new Error(`Create board submit button not found for board: ${job.boardName}`);
               }
@@ -677,67 +777,115 @@ export class PublishExecutor {
       onProgress({ progress: 90, message: 'Publishing Pin...', status: 'running' });
       await this.db.addLog('info', 'Clicking Publish button...', { jobId: job.id });
 
+      // ===== STEP 7: Click Publish =====
+      onProgress({ progress: 90, message: 'Publishing Pin...', status: 'running' });
+      await this.db.addLog('info', 'Clicking Publish button...', { jobId: job.id });
+
       const publishLocators = [
-        page.locator('[data-test-id="board-dropdown-save-button"]'),
-        page.locator('div[role="button"]:has-text("Publish")'),
-        page.locator('button:has-text("Publish")'),
-        page.locator('button:has-text("Save")'),
-        page.locator('[data-test-id="create-pin-submit-button"]'),
+        '[data-test-id="board-dropdown-save-button"]',
+        '[data-test-id="SaveButton"]',
+        '[data-test-id="board-dropdown-save-button"] button',
+        '[data-test-id="create-pin-submit-button"]',
+        '[data-test-id="pin-builder-publish-button"]',
+        '[data-test-id="submit-button"]',
+        'button:has-text("Publish")',
+        'button:has-text("Save")',
+        'div[role="button"]:has-text("Publish")',
+        'div[role="button"]:has-text("Save")',
+        'button[type="submit"]',
       ];
 
       let published = false;
-      for (const locator of publishLocators) {
-        const count = await locator.count().catch(() => 0);
-        for (let i = 0; i < count; i++) {
-          const btn = locator.nth(i);
-          if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
-            await this.sleep(600);
-            await btn.click();
-            published = true;
-            break;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        if (this.isStopped) throw new Error('STOPPED');
+        
+        for (const selector of publishLocators) {
+          const loc = page.locator(selector);
+          const count = await loc.count().catch(() => 0);
+          for (let i = 0; i < count; i++) {
+            const btn = loc.nth(i);
+            if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
+              await this.sleep(400);
+              await btn.click({ force: true });
+              published = true;
+              console.log(`[PublishExecutor] Successfully clicked publish button with selector: ${selector}`);
+              break;
+            }
           }
+          if (published) break;
         }
         if (published) break;
+        await this.sleep(500);
       }
 
       if (!published) {
-        throw new Error('Publish/Save button not found. Please click Publish manually in the browser.');
+        throw new Error('Publish/Save button not found or was disabled. Please click Publish manually in the browser.');
       }
 
-      // Wait for success confirmation
+      // Wait for success confirmation & scrape Live Pin URL
       onProgress({ progress: 95, message: 'Waiting for Pinterest confirmation...', status: 'running' });
       
       let livePinUrl = '';
       let success = false;
       
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for (let attempt = 0; attempt < 25; attempt++) {
         if (this.isStopped) throw new Error('STOPPED');
         
-        const url = page.url();
-        if (url.includes('/pin/')) {
-          livePinUrl = url;
+        // 1. Check current URL for /pin/<id>/ redirect
+        const currentUrl = page.url();
+        const urlPinMatch = currentUrl.match(/\/pin\/(\d+)/i);
+        if (urlPinMatch) {
+          livePinUrl = `https://www.pinterest.com/pin/${urlPinMatch[1]}/`;
           success = true;
+          console.log(`[PublishExecutor] Detected Live Pin URL from page redirect: ${livePinUrl}`);
           break;
         }
 
-        // Check for link to pin in page
-        const pinLink = page.locator('a[href*="/pin/"]').first();
-        if (await pinLink.count().catch(() => 0) > 0) {
-          const href = await pinLink.getAttribute('href').catch(() => '');
-          if (href) {
-            livePinUrl = href.startsWith('http') ? href : `https://www.pinterest.com${href}`;
-            success = true;
-            break;
-          }
-        }
+        // 2. Check modal, toast, and see-it-now buttons for /pin/<id>/ link
+        const pinLinkLocators = [
+          'a[data-test-id="see-it-now-button"]',
+          'a[data-test-id="view-pin-button"]',
+          '[data-test-id="toast"] a[href*="/pin/"]',
+          '[data-test-id="toast-message"] a[href*="/pin/"]',
+          'div[role="alert"] a[href*="/pin/"]',
+          'div[role="dialog"] a[href*="/pin/"]',
+          'a[href*="/pin/"]'
+        ];
 
-        // Check for success text
+        for (const sel of pinLinkLocators) {
+          const loc = page.locator(sel);
+          const count = await loc.count().catch(() => 0);
+          for (let i = 0; i < count; i++) {
+            const href = await loc.nth(i).getAttribute('href').catch(() => '');
+            if (href) {
+              const hrefMatch = href.match(/\/pin\/(\d+)/i);
+              if (hrefMatch) {
+                livePinUrl = `https://www.pinterest.com/pin/${hrefMatch[1]}/`;
+                success = true;
+                console.log(`[PublishExecutor] Scraped Live Pin URL from locator (${sel}): ${livePinUrl}`);
+                break;
+              }
+            }
+          }
+          if (success) break;
+        }
+        if (success) break;
+
+        // 3. Check page content for confirmation text and regex match
         const pageHTML = await page.content().catch(() => '');
-        if (pageHTML.includes('Created Pin') || pageHTML.includes('Your Pin has been published') || pageHTML.includes('View Pin')) {
+        const hasSuccessText = pageHTML.includes('Created Pin') || 
+                               pageHTML.includes('Your Pin has been published') || 
+                               pageHTML.includes('View Pin') || 
+                               pageHTML.includes('Saved to') || 
+                               pageHTML.includes('See it now') ||
+                               pageHTML.includes('Your Pin is live');
+
+        if (hasSuccessText) {
           success = true;
-          const match = pageHTML.match(/href="\/pin\/(\d+)\//i) || pageHTML.match(/href="\/pin\/(\d+)"/i);
-          if (match) {
-            livePinUrl = `https://www.pinterest.com/pin/${match[1]}/`;
+          const htmlMatch = pageHTML.match(/\/pin\/(\d+)/i);
+          if (htmlMatch) {
+            livePinUrl = `https://www.pinterest.com/pin/${htmlMatch[1]}/`;
+            console.log(`[PublishExecutor] Scraped Live Pin URL from HTML regex: ${livePinUrl}`);
           }
           break;
         }
@@ -746,8 +894,15 @@ export class PublishExecutor {
       }
 
       if (!success) {
-        // Not necessarily a failure - Pinterest can be slow with confirmations
-        await this.db.addLog('warn', 'Could not confirm success toast/redirect, but no error detected. Treating as published.', { jobId: job.id });
+        // Fallback: Check if page redirected away from pin builder
+        const finalUrl = page.url();
+        if (!finalUrl.includes('/pin-builder') && !finalUrl.includes('/pin-creation')) {
+          success = true;
+          await this.db.addLog('info', 'Page redirected away from pin builder. Treating as successfully published.', { jobId: job.id });
+        } else {
+          await this.db.addLog('warn', 'Could not confirm success toast/redirect, but no error detected. Treating as published.', { jobId: job.id });
+          success = true;
+        }
       }
 
       if (livePinUrl) {

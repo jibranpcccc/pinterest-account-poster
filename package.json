@@ -22,7 +22,7 @@
     "license":  "MIT",
     "dependencies":  {
                          "adm-zip":  "^0.5.18",
-                         "jimp":  "^0.22.12",
+                         "jimp": "0.22.12",
                          "lucide-react":  "^0.395.0",
                          "playwright":  "^1.44.1",
                          "react":  "^18.3.1",

@@ -15,6 +15,7 @@ module.exports = [
     fn: async ({ page, dbHelper }) => {
       await page.click('#e2e-nav-scheduler');
       await page.check('#e2e-autostart-toggle');
+      await expect(page.locator('#e2e-autostart-status')).toContainText('ENABLED');
 
       const db = await windowNodeGetDb();
       const setting = db.settings.find(s => s.key === 'autoStart');
@@ -28,7 +29,9 @@ module.exports = [
     fn: async ({ page, dbHelper }) => {
       await page.click('#e2e-nav-scheduler');
       await page.check('#e2e-autostart-toggle'); // Enable first
+      await expect(page.locator('#e2e-autostart-status')).toContainText('ENABLED');
       await page.uncheck('#e2e-autostart-toggle'); // Disable
+      await expect(page.locator('#e2e-autostart-status')).toContainText('DISABLED');
 
       const db = await windowNodeGetDb();
       const setting = db.settings.find(s => s.key === 'autoStart');

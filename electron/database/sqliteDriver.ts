@@ -13,9 +13,11 @@ export class SqliteDriver implements DbDriver {
         if (err) {
           reject(err);
         } else {
-          // Enable foreign keys and set busy timeout
+          // Enable foreign keys, WAL mode, and set busy timeout
           this.db?.serialize(() => {
             this.db?.run('PRAGMA foreign_keys = ON;');
+            this.db?.run('PRAGMA journal_mode = WAL;');
+            this.db?.run('PRAGMA synchronous = NORMAL;');
             this.db?.run('PRAGMA busy_timeout = 5000;', (pragmaErr) => {
               if (pragmaErr) {
                 console.warn('Could not set busy timeout in SQLite:', pragmaErr);
