@@ -558,6 +558,32 @@ Keep it short (2-4 words). No quotes, no explanations, just the search query.`;
     }
   }
 
+  public async generateRepinKeywordPool(boardName: string, count: number = 5): Promise<string[]> {
+    const system = `You are a Pinterest SEO expert.
+Given a Pinterest board name, generate ${count} distinct, highly relevant, and randomized search queries that users type on Pinterest to discover pins for this board.
+Return ONLY a valid JSON array of strings, e.g. ["query one", "query two", "query three"]. Do not include markdown code blocks or explanations.`;
+
+    const user = `Board Name: "${boardName}"\nGenerate ${count} distinct Pinterest search queries in JSON array:`;
+
+    try {
+      const result = await this.makeChatCompletion(system, user);
+      const clean = result.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const start = clean.indexOf('[');
+      const end = clean.lastIndexOf(']');
+      if (start !== -1 && end !== -1) {
+        const jsonStr = clean.slice(start, end + 1);
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((s: any) => String(s).replace(/['"]/g, '').trim()).filter(Boolean);
+        }
+      }
+      return [boardName];
+    } catch (e) {
+      console.warn('Failed to generate repin keyword pool via AI, falling back to board name:', e);
+      return [boardName];
+    }
+  }
+
   public async generateTitleSuggestions(input: AIInput): Promise<string[]> {
     const system = `You are a Pinterest SEO copywriter for the hairstyle niche.
 Generate 5 unique pin titles.

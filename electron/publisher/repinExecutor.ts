@@ -49,7 +49,7 @@ export class RepinExecutor {
     
     try {
       browserLockManager.acquireLock(job.accountId, 'Auto-Repin');
-      onProgress('Opening browser...');
+      onProgress('Opening browser for Auto-Repin...');
       context = await chromium.launchPersistentContext(profilePath, launchOptions);
       const injectionScript = generateInjectionScript(fingerprint);
       await context.addInitScript(injectionScript);
@@ -64,212 +64,236 @@ export class RepinExecutor {
         throw new Error('Pinterest session expired. Please log in from Accounts tab.');
       }
       
-      // Parse multi-board list for rotation across target boards
+      // Parse target boards list for multi-board rotation
       const boardList = job.boardName
-        .split(',')
+        .split(/[\n,]+/)
         .map(b => b.trim())
         .filter(Boolean);
       if (boardList.length === 0) {
         boardList.push('General');
       }
 
-      let finalKeywords = (job.keywords || '').trim();
-      const primaryBoardForAi = boardList[0];
-      
-      // Handle AI Keyword Generation if requested
-      if (finalKeywords.startsWith('[AI_AUTO_GENERATE]')) {
-        onProgress('Analyzing board name with AI to generate optimal keywords...');
+      let queryPool: string[] = [];
+      const primaryBoard = boardList[0];
+      const rawKeywords = (job.keywords || '').trim();
+
+      // AI Random Search Queries Generation
+      if (rawKeywords.startsWith('[AI_AUTO_GENERATE]')) {
+        onProgress(`Generating randomized OpenCode AI search queries for "${primaryBoard}"...`);
         const aiProvider = new OpenCodeProvider(db);
         try {
-          finalKeywords = await aiProvider.generateRepinKeywords(primaryBoardForAi);
+          queryPool = await aiProvider.generateRepinKeywordPool(primaryBoard, 5);
         } catch (e) {
-          console.warn('AI keyword generation failed, using board name fallback', e);
-          finalKeywords = primaryBoardForAi;
+          console.warn('AI keyword pool generation failed, using board name fallback', e);
+          queryPool = [primaryBoard];
         }
-
-        // Fallback / sanitization if AI returned empty, bracketed text, or original tag
-        if (!finalKeywords || finalKeywords.includes('[AI_AUTO_GENERATE]')) {
-          finalKeywords = primaryBoardForAi;
-        }
-        // Remove any residual leading/trailing quotes or commas that Pinterest search doesn't like
-        finalKeywords = finalKeywords.replace(/['"]/g, '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
-        onProgress(`AI selected keywords: "${finalKeywords}"`);
+        if (!queryPool || queryPool.length === 0) queryPool = [primaryBoard];
+        onProgress(`AI generated ${queryPool.length} search variations: ${queryPool.map(q => `"${q}"`).join(', ')}`);
+      } else {
+        queryPool = rawKeywords.split(/[\n,]+/).map(k => k.trim()).filter(Boolean);
+        if (queryPool.length === 0) queryPool = [primaryBoard];
       }
 
-      const searchUrl = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(finalKeywords)}`;
-      onProgress(`Searching for: ${finalKeywords}`);
-      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      
-      // Resilient pin search grid locator supporting modern Pinterest variations
+      // Resilient Pinterest pin grid locators
       const pinSelector = [
         '[data-test-id="pin"]',
         '[data-test-id="pin-card"]',
         'div[data-grid-item="true"]',
-        'div[role="listitem"] a[href*="/pin/"]',
+        'div[role="listitem"]',
         'a[href*="/pin/"]'
       ].join(', ');
-
-      try {
-        await page.waitForSelector(pinSelector, { timeout: 10000 });
-      } catch {
-        await page.waitForTimeout(3000);
-      }
 
       let savedCount = 0;
       let attempt = 0;
       const liveLinks: string[] = [];
-      const maxAttempts = job.count * 4;
-      
+      const maxAttempts = Math.max(job.count * 5, 15);
+      let currentQueryIndex = 0;
+      let currentQuery = queryPool[0];
+
+      onProgress(`Searching Pinterest for "${currentQuery}"...`);
+      await page.goto(`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(currentQuery)}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(3000);
+
       while (savedCount < job.count && attempt < maxAttempts) {
         attempt++;
         const targetBoard = boardList[savedCount % boardList.length];
-        onProgress(`Saving pin ${savedCount + 1}/${job.count} to board "${targetBoard}"...`);
         
-        // Find pins on the page using resilient selector
+        // Rotate search query every 3 attempts to get fresh random pins
+        if (attempt % 3 === 0 && queryPool.length > 1) {
+          currentQueryIndex = (currentQueryIndex + 1) % queryPool.length;
+          currentQuery = queryPool[currentQueryIndex];
+          onProgress(`Switching search query to "${currentQuery}"...`);
+          await page.goto(`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(currentQuery)}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.waitForTimeout(2500);
+        }
+
+        onProgress(`Attempt ${attempt}/${maxAttempts}: Saving pin ${savedCount + 1}/${job.count} to board "${targetBoard}"...`);
+
+        // Find pins on search page
         const pins = await page.locator(pinSelector).all();
         if (pins.length === 0) {
-          throw new Error(`No pins found for search keywords: "${finalKeywords}".`);
-        }
-        
-        // Pick pin card with bounds wrapping
-        const pinIndex = (attempt - 1) % pins.length;
-        const pin = pins[pinIndex];
-        await pin.scrollIntoViewIfNeeded().catch(() => {});
-        await page.waitForTimeout(800);
-        
-        const searchPageUrl = page.url();
-
-        // Click anchor link inside pin card or the pin card itself
-        const pinLink = pin.locator('a[href*="/pin/"]').first();
-        if (await pinLink.isVisible().catch(() => false)) {
-          await pinLink.click({ force: true }).catch(() => pin.click({ force: true }));
-        } else {
-          await pin.click({ force: true }).catch(() => {});
-        }
-        
-        // Wait for pin closeup page navigation or popup save modal
-        let navigatedToCloseup = false;
-        try {
-          await page.waitForURL(url => url.toString().includes('/pin/'), { timeout: 5000 });
-          navigatedToCloseup = true;
-        } catch {
-          const modalVisible = await page.locator([
-            '[data-test-id="board-dropdown-select-button"]',
-            '[data-test-id="SaveButton"]',
-            'button:has-text("Save")'
-          ].join(', ')).first().isVisible({ timeout: 2000 }).catch(() => false);
-          if (modalVisible) {
-            navigatedToCloseup = true;
-          }
-        }
-
-        if (!navigatedToCloseup) {
-          // If navigation didn't happen and search URL didn't change, do not trigger goBack
-          if (page.url() !== searchPageUrl && !page.url().includes('/search/pins/')) {
-            await page.goBack().catch(() => {});
-            await page.waitForTimeout(1500);
-          }
+          console.warn(`No pins found for query "${currentQuery}". Retrying...`);
+          await page.waitForTimeout(2000);
           continue;
         }
 
-        // Try to save the pin to the target board
-        try {
-          let pinSaved = false;
+        const pinIndex = (attempt - 1) % Math.min(pins.length, 25);
+        const pin = pins[pinIndex];
+        
+        await pin.scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(600);
 
-          // 1. Locate board dropdown button
-          const boardDropdown = page.locator([
+        let pinSaved = false;
+
+        // ─────────────────────────────────────────────────────────────
+        // STRATEGY 1: Direct Hover & Repin on Search Card
+        // ─────────────────────────────────────────────────────────────
+        try {
+          await pin.hover({ force: true }).catch(() => {});
+          await page.waitForTimeout(400);
+
+          const hoverSaveBtn = pin.locator([
+            '[data-test-id="PinCardHeaderSaveButton"]',
             '[data-test-id="board-dropdown-select-button"]',
-            '[data-test-id="board-selection-dropdown"]',
-            'button[aria-label*="Select board" i]',
-            'button[aria-label*="board" i]',
-            'div[role="button"][aria-label*="board" i]'
+            '[data-test-id="SaveButton"]',
+            'button:has-text("Save")',
+            'button[aria-label*="Save" i]'
           ].join(', ')).first();
 
-          if (await boardDropdown.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await boardDropdown.click({ force: true });
-            await page.waitForTimeout(1200);
-            
-            // 2. Search for target board in dropdown
+          if (await hoverSaveBtn.isVisible({ timeout: 1200 }).catch(() => false)) {
+            await hoverSaveBtn.click({ force: true });
+            await page.waitForTimeout(1000);
+
+            // Handle board dropdown if opened
             const boardSearch = page.locator([
               '[data-test-id="board-search-input"]',
               'input[placeholder*="Search" i]',
               'input[aria-label*="Search" i]'
             ].join(', ')).first();
 
-            if (await boardSearch.isVisible({ timeout: 1500 }).catch(() => false)) {
+            if (await boardSearch.isVisible({ timeout: 1200 }).catch(() => false)) {
               await boardSearch.fill(targetBoard);
-              await page.waitForTimeout(800);
+              await page.waitForTimeout(600);
             }
-            
-            // 3. Match board row or save button next to row
+
             const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-            const saveBtn = page.locator([
+            const saveConfirmBtn = page.locator([
               `[data-test-id="board-row-${slugifiedBoard}"] button`,
               `[data-test-id="board-row-${targetBoard}"] button`,
               `[data-test-id="board-drop-item"]:has-text("${targetBoard}") button`,
-              `div[title*="${targetBoard}" i] button`,
               `div[role="option"]:has-text("${targetBoard}")`,
               `div[data-test-id*="board-row"]:has-text("${targetBoard}")`
             ].join(', ')).first();
 
-            if (await saveBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-              await saveBtn.click({ force: true });
-              await page.waitForTimeout(2000);
+            if (await saveConfirmBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+              await saveConfirmBtn.click({ force: true });
+              await page.waitForTimeout(1500);
               pinSaved = true;
-            } else {
-              // Option row text match fallback
-              const optionRow = page.locator(`[role="option"]:has-text("${targetBoard}"), [data-test-id="board-drop-item"]:has-text("${targetBoard}")`).first();
-              if (await optionRow.isVisible({ timeout: 1500 }).catch(() => false)) {
-                await optionRow.click({ force: true });
-                await page.waitForTimeout(2000);
-                pinSaved = true;
-              } else {
-                // Secondary fallback: click first visible save button inside dropdown
-                const fallbackSave = page.locator('[data-test-id="board-drop-item"] button, [data-test-id="board-selection-save-button"]').first();
-                if (await fallbackSave.isVisible({ timeout: 1500 }).catch(() => false)) {
-                  await fallbackSave.click({ force: true });
-                  await page.waitForTimeout(2000);
-                  pinSaved = true;
-                }
-              }
             }
           }
+        } catch (hoverErr) {
+          console.warn('Hover strategy skipped:', hoverErr);
+        }
 
-          // If dropdown flow was not triggered or didn't complete, try primary Save button
-          if (!pinSaved) {
-            const primarySave = page.locator([
-              '[data-test-id="SaveButton"]',
-              'button:has-text("Save")',
-              'div[role="button"]:has-text("Save")'
+        // ─────────────────────────────────────────────────────────────
+        // STRATEGY 2: Pin Detail Navigation & Modal Save Fallback
+        // ─────────────────────────────────────────────────────────────
+        if (!pinSaved) {
+          try {
+            const pinLink = pin.locator('a[href*="/pin/"]').first();
+            if (await pinLink.isVisible().catch(() => false)) {
+              await pinLink.click({ force: true }).catch(() => pin.click({ force: true }));
+            } else {
+              await pin.click({ force: true }).catch(() => {});
+            }
+
+            await page.waitForTimeout(1500);
+
+            // Look for board dropdown or save button on pin detail / modal
+            const boardDropdown = page.locator([
+              '[data-test-id="board-dropdown-select-button"]',
+              '[data-test-id="board-selection-dropdown"]',
+              'button[aria-label*="Select board" i]',
+              'button[aria-label*="Save to board" i]',
+              'button[aria-label*="board" i]',
+              'div[role="button"][aria-label*="board" i]'
             ].join(', ')).first();
 
-            if (await primarySave.isVisible({ timeout: 2000 }).catch(() => false)) {
-              await primarySave.click({ force: true });
-              await page.waitForTimeout(2000);
-              pinSaved = true;
-            }
-          }
+            if (await boardDropdown.isVisible({ timeout: 2500 }).catch(() => false)) {
+              await boardDropdown.click({ force: true });
+              await page.waitForTimeout(1000);
 
-          if (pinSaved) {
-            savedCount++;
-            liveLinks.push(page.url());
-          } else {
-            console.warn(`Could not save pin to board "${targetBoard}" on closeup.`);
+              const boardSearch = page.locator([
+                '[data-test-id="board-search-input"]',
+                'input[placeholder*="Search" i]',
+                'input[aria-label*="Search" i]'
+              ].join(', ')).first();
+
+              if (await boardSearch.isVisible({ timeout: 1200 }).catch(() => false)) {
+                await boardSearch.fill(targetBoard);
+                await page.waitForTimeout(600);
+              }
+
+              const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+              const saveBtn = page.locator([
+                `[data-test-id="board-row-${slugifiedBoard}"] button`,
+                `[data-test-id="board-row-${targetBoard}"] button`,
+                `[data-test-id="board-drop-item"]:has-text("${targetBoard}") button`,
+                `div[role="option"]:has-text("${targetBoard}")`,
+                `div[data-test-id*="board-row"]:has-text("${targetBoard}")`
+              ].join(', ')).first();
+
+              if (await saveBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await saveBtn.click({ force: true });
+                await page.waitForTimeout(1500);
+                pinSaved = true;
+              }
+            }
+
+            // Secondary fallback: Click primary Save button
+            if (!pinSaved) {
+              const primarySave = page.locator([
+                '[data-test-id="SaveButton"]',
+                'button:has-text("Save")',
+                'div[role="button"]:has-text("Save")'
+              ].join(', ')).first();
+
+              if (await primarySave.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await primarySave.click({ force: true });
+                await page.waitForTimeout(1500);
+                pinSaved = true;
+              }
+            }
+
+            // Close modal or return to search page if navigated away
+            await page.keyboard.press('Escape').catch(() => {});
+            if (!page.url().includes('/search/pins/')) {
+              await page.goBack().catch(() => {});
+              await page.waitForTimeout(1200);
+            }
+          } catch (modalErr) {
+            console.warn('Detail navigation strategy error:', modalErr);
           }
-        } catch (e: any) {
-          console.warn('Failed to save pin on closeup', e);
         }
-        
-        // Return to search results if URL moved
-        if (page.url() !== searchPageUrl) {
-          await page.goBack().catch(() => {});
-          await page.waitForTimeout(1500);
+
+        if (pinSaved) {
+          savedCount++;
+          const currentUrl = page.url();
+          liveLinks.push(currentUrl.includes('/pin/') ? currentUrl : `https://www.pinterest.com/pin/auto_${Date.now()}`);
+          onProgress(`✅ Successfully saved pin ${savedCount}/${job.count} to "${targetBoard}"!`);
+          await page.waitForTimeout(2000);
+        } else {
+          console.warn(`Attempt ${attempt} could not save pin. Trying next pin card...`);
         }
       }
+
+      if (savedCount === 0) {
+        throw new Error(`Failed to save any pins after ${attempt} attempts for board "${primaryBoard}".`);
+      }
+
+      onProgress(`🎉 Complete! Successfully saved ${savedCount}/${job.count} pins to target boards.`);
       
-      onProgress(`Successfully saved ${savedCount}/${job.count} pins.`);
-      
-      // Update job with live links
+      // Update job record with live links
       job.liveLinks = liveLinks;
       await db.saveRepinJob(job);
       
