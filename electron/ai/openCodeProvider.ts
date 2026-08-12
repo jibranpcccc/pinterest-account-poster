@@ -214,26 +214,23 @@ let _globalCfRoundRobinIndex = 0;
 // In production: __dirname = dist-electron/ → go up 1 level
 // In dev:        __dirname = electron/ai/  → go up 2 levels
 // process.cwd() = project root in both cases — most reliable
+
+const getUserDataPath = () => {
+  try {
+    return app.getPath('userData');
+  } catch {
+    return path.join(process.cwd(), 'local-data');
+  }
+};
+
 const _PROJECT_ROOT = (() => {
-  // In packaged .exe, files land in process.resourcesPath (next to the exe in resources/)
-  if (process.resourcesPath) {
-    const rp = path.join(process.resourcesPath, 'cloudflare_accounts.txt');
-    if (require('fs').existsSync(rp)) return process.resourcesPath;
-  }
-  // Dev / unpackaged: walk up from __dirname
-  for (const rel of ['.', '..', '../..']) {
-    const p = path.resolve(__dirname, rel);
-    if (require('fs').existsSync(path.join(p, 'cloudflare_accounts.txt'))) return p;
-  }
-  // Fallback: cwd
   const cwd = process.cwd();
   if (require('fs').existsSync(path.join(cwd, 'cloudflare_accounts.txt'))) return cwd;
-  // Last resort: userData (user may have manually placed the file there)
-  return app.getPath('userData');
+  return getUserDataPath();
 })();
 
 // ── Local status file — keeps track of exhausted (429) accounts ──
-const LOCAL_CF_STATUS_PATH = path.join(app.getPath('userData'), 'cloudflare_status.json');
+const LOCAL_CF_STATUS_PATH = path.join(getUserDataPath(), 'cloudflare_status.json');
 // ── Local accounts file — copy of cloudflare_working_accounts.txt ──
 const LOCAL_CF_ACCOUNTS_PATH = path.join(_PROJECT_ROOT, 'cloudflare_accounts.txt');
 
