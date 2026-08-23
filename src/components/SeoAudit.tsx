@@ -33,70 +33,77 @@ export const SeoAudit: React.FC<SeoAuditProps> = ({
   };
 
   // ─── Scoring Checks ───
+  const containsBannedWords = (text: string) => {
+    const banned = ['viral', 'stunning', 'must-have', 'mind-blowing', 'jaw-dropping', 'insane', 'unbelievable'];
+    const lower = text.toLowerCase();
+    return banned.some(w => lower.includes(w));
+  };
+  const hasSentenceEnd = (text: string) => /[.!?]$/.test(text.trim());
+
   const checks = [
     {
-      name: 'Title Length & Keywords',
+      name: 'Title Search Optimization',
       maxScore: 20,
       score: trimTitle.length === 0 ? 0 
-        : trimTitle.length >= 40 && trimTitle.length <= 80 ? 20 
-        : trimTitle.length >= 20 && trimTitle.length <= 90 ? 14 
+        : trimTitle.length >= 45 && trimTitle.length <= 85 ? 20 
+        : trimTitle.length >= 25 && trimTitle.length <= 95 ? 14 
         : 6,
       tip: trimTitle.length === 0 
-        ? 'Add a keyword-rich title. Front-load the primary search term in the first 5 words.'
-        : trimTitle.length < 40 
-          ? `Title is ${trimTitle.length} chars — aim for 40-80 for optimal Pinterest search ranking.`
+        ? 'Add a keyword-rich title. Front-load your primary search phrase.'
+        : trimTitle.length < 45 
+          ? `Title is ${trimTitle.length} chars — aim for 45-85 for top search ranking.`
           : trimTitle.length > 85 
-            ? `Title is ${trimTitle.length} chars — Pinterest may truncate after ~85 characters.`
-            : `Perfect length (${trimTitle.length} chars). Keywords are visible in search.`
+            ? `Title is ${trimTitle.length} chars — Pinterest truncates titles over ~85 chars.`
+            : `Optimal length (${trimTitle.length} chars). Primary intent keywords are visible in mobile search.`
     },
     {
-      name: 'Title Emoji',
-      maxScore: 5,
-      score: trimTitle.length > 0 && hasEmoji(trimTitle) ? 5 : 0,
-      tip: hasEmoji(trimTitle) 
-        ? 'Emoji adds visual appeal in the feed ✓' 
-        : 'Add 1-2 relevant emojis to your title for higher CTR (e.g. 🏡 💡 🎨).'
+      name: 'Clean Title Format',
+      maxScore: 10,
+      score: trimTitle.length === 0 ? 0 : !hasEmoji(trimTitle) && !trimTitle.includes('|') ? 10 : 4,
+      tip: trimTitle.length === 0
+        ? 'A clean title with no emojis or pipe symbols ensures algorithmic search indexing.'
+        : hasEmoji(trimTitle) 
+          ? 'Emojis in titles can be flagged as clickbait by Pinterest 2026 visual search.'
+          : trimTitle.includes('|')
+            ? 'Avoid pipe symbols (|). Use natural sentence structure or colons.'
+            : 'Clean title without spam symbols or emojis ✓'
     },
     {
-      name: 'Description Length',
+      name: 'Description Depth & Keywords',
+      maxScore: 20,
+      score: trimDesc.length === 0 ? 0 
+        : trimDesc.length >= 220 && trimDesc.length <= 380 ? 20 
+        : trimDesc.length >= 120 && trimDesc.length <= 450 ? 14 
+        : 6,
+      tip: trimDesc.length === 0 
+        ? 'Add a 220-380 char description with 2-4 natural semantic search terms.'
+        : trimDesc.length < 220 
+          ? `Description is ${trimDesc.length} chars — expand to 220-380 for maximum context indexing.`
+          : trimDesc.length > 380 
+            ? `Description is ${trimDesc.length} chars — Pinterest shows ~232 chars before fold, consider trimming.`
+            : `Optimal length (${trimDesc.length} chars). Feed preview and search depth are maximized.`
+    },
+    {
+      name: 'Sentence Integrity & Natural Copy',
       maxScore: 15,
       score: trimDesc.length === 0 ? 0 
-        : trimDesc.length >= 200 && trimDesc.length <= 350 ? 15 
-        : trimDesc.length >= 100 && trimDesc.length <= 400 ? 10 
-        : 5,
+        : hasSentenceEnd(trimDesc) && !containsBannedWords(trimDesc) ? 15 
+        : hasSentenceEnd(trimDesc) ? 10 : 5,
       tip: trimDesc.length === 0 
-        ? 'Add a description starting with your primary keyword. Aim for 200-300 characters.'
-        : trimDesc.length < 200 
-          ? `Description is ${trimDesc.length} chars — expand to 200-300 for maximum feed visibility.`
-          : trimDesc.length > 350 
-            ? `Description is ${trimDesc.length} chars — Pinterest shows ~232 chars in feed, consider trimming.`
-            : `Optimal length (${trimDesc.length} chars). Feed visibility is maximized.`
+        ? 'Ensure your description ends in complete sentences with standard punctuation.'
+        : containsBannedWords(trimDesc)
+          ? 'Avoid hype spam words (viral, stunning, must-have) to prevent algorithmic downranking.'
+          : !hasSentenceEnd(trimDesc)
+            ? 'Description should end with complete punctuation (. ! ?).'
+            : 'Natural copywriting with complete sentences ✓'
     },
     {
-      name: 'Hashtags',
-      maxScore: 10,
-      score: (() => {
-        const count = hasHashtags(trimDesc);
-        if (count >= 2 && count <= 4) return 10;
-        if (count === 1) return 5;
-        if (count > 4) return 6; // Too many hashtags
-        return 0;
-      })(),
-      tip: (() => {
-        const count = hasHashtags(trimDesc);
-        if (count === 0) return 'Add 2-3 niche-specific hashtags at the end of your description (e.g. #ModernKitchen #HomeDecor).';
-        if (count === 1) return 'Good start! Add 1-2 more niche hashtags for better discovery.';
-        if (count > 4) return 'Too many hashtags. Use 2-4 targeted, niche-specific ones.';
-        return `${count} hashtags — perfect for discovery without looking spammy.`;
-      })()
-    },
-    {
-      name: 'Call-to-Action',
+      name: 'Soft Call-to-Action',
       maxScore: 10,
       score: trimDesc.length > 0 && hasCTA(trimDesc) ? 10 : 0,
       tip: hasCTA(trimDesc) 
-        ? 'CTA detected ✓ Drives clicks and saves.' 
-        : 'Add a CTA: "Save for later!", "Click for the full guide!", or "Pin this for inspiration!"'
+        ? 'Soft CTA detected ✓ Drives saves and clicks.' 
+        : 'Add a natural CTA: "Save this pin for later" or "Pin this look for inspiration."'
     },
     {
       name: 'Alt Text (Accessibility)',

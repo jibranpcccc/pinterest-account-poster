@@ -173,9 +173,25 @@ export const AutoPinningPipeline: React.FC<AutoPinningPipelineProps> = ({
                 </div>
 
                 {/* Session Health Dot */}
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/50 border border-emerald-800/50 text-emerald-300 text-[10px] font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Active Session
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                  account.sessionStatus === 'connected'
+                    ? 'bg-emerald-950/50 border-emerald-800/50 text-emerald-300'
+                    : account.sessionStatus === 'expired'
+                    ? 'bg-amber-950/50 border-amber-800/50 text-amber-300'
+                    : 'bg-rose-950/50 border-rose-800/50 text-rose-300'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    account.sessionStatus === 'connected'
+                      ? 'bg-emerald-400 animate-pulse'
+                      : account.sessionStatus === 'expired'
+                      ? 'bg-amber-400'
+                      : 'bg-rose-400'
+                  }`}></span>
+                  {account.sessionStatus === 'connected' 
+                    ? 'Active Session' 
+                    : account.sessionStatus === 'expired' 
+                    ? 'Session Expired' 
+                    : 'Disconnected'}
                 </div>
               </div>
 

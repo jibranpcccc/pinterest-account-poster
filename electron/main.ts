@@ -588,15 +588,28 @@ function registerIpcHandlers() {
     const fetcher = new AnalyticsFetcher();
     const result = await fetcher.fetchAnalytics(accounts[0].id, accounts[0].profilePath);
     if (result) {
+      const parseMetricValue = (val: string | number | undefined): number => {
+        if (val === undefined || val === null || val === '') return 0;
+        if (typeof val === 'number') return Math.round(val);
+        const clean = val.toString().trim().toLowerCase().replace(/,/g, '');
+        if (clean.endsWith('m') || clean.endsWith('million')) {
+          return Math.round(parseFloat(clean) * 1000000);
+        }
+        if (clean.endsWith('k') || clean.endsWith('thousand')) {
+          return Math.round(parseFloat(clean) * 1000);
+        }
+        return Math.round(parseFloat(clean)) || 0;
+      };
+
       try {
         await db.saveAnalyticsSnapshot({
           accountId: accounts[0].id,
           followersRaw: result.followers,
           monthlyViewsRaw: result.monthlyViews,
-          impressions: result.impressions ? parseInt(result.impressions.replace(/\D/g, '')) || 0 : 0,
-          engagements: result.engagements ? parseInt(result.engagements.replace(/\D/g, '')) || 0 : 0,
-          outboundClicks: result.outboundClicks ? parseInt(result.outboundClicks.replace(/\D/g, '')) || 0 : 0,
-          saves: result.saves ? parseInt(result.saves.replace(/\D/g, '')) || 0 : 0,
+          impressions: parseMetricValue(result.impressions),
+          engagements: parseMetricValue(result.engagements),
+          outboundClicks: parseMetricValue(result.outboundClicks),
+          saves: parseMetricValue(result.saves),
           timestamp: result.timestamp || new Date().toISOString()
         });
       } catch (e) {

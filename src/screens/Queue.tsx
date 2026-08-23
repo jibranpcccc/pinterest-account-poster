@@ -5,7 +5,7 @@ import { ContentCalendar } from '../components/ContentCalendar';
 import { QueueJob, Account, QueueProgressData, Board } from '../types';
 import { 
   Play, Pause, Square, Trash2, ListOrdered, 
-  RefreshCw, Clock, RotateCcw, AlertTriangle, CheckSquare,
+  RefreshCw, Clock, RotateCcw, AlertTriangle, CheckSquare, CheckCircle2,
   Edit3, Globe, Folder, Settings, Check, X, Sparkles, Layers, Sliders, Calendar, Activity
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -397,24 +397,20 @@ export const Queue: React.FC<QueueProps> = ({
         }
       }
 
-      for (const job of selectedJobs) {
+      const updatePromises = selectedJobs.map(job => {
         const updated: QueueJob = { ...job };
-
-        if (batchBoard.trim()) {
-          updated.boardName = batchBoard.trim();
-        }
-        if (batchDestinationUrl.trim()) {
-          updated.destinationUrl = batchDestinationUrl.trim();
-        }
+        if (batchBoard.trim()) updated.boardName = batchBoard.trim();
+        if (batchDestinationUrl.trim()) updated.destinationUrl = batchDestinationUrl.trim();
         if (batchApplySchedule) {
           updated.scheduledDate = batchScheduleDate;
           updated.scheduledTime = formattedTime;
           updated.status = 'scheduled';
         }
+        return api.saveQueueJob(updated);
+      });
 
-        await api.saveQueueJob(updated);
-        updatedCount++;
-      }
+      await Promise.all(updatePromises);
+      updatedCount = selectedJobs.length;
 
       onShowToast(`🎉 Successfully updated ${updatedCount} job(s)!`, 'success');
       setShowBulkModal(false);
@@ -767,6 +763,36 @@ export const Queue: React.FC<QueueProps> = ({
     } catch (e: any) { onShowToast(`Stop failed: ${e.message}`, 'error'); }
   };
 
+  const handleClearCompleted = async () => {
+    const completedJobs = queue.filter(q => q.status === 'completed');
+    if (completedJobs.length === 0) {
+      onShowToast('No completed jobs to clear.', 'info');
+      return;
+    }
+    if (confirm(`Remove ${completedJobs.length} completed job(s) from the queue?`)) {
+      try {
+        await Promise.all(completedJobs.map(j => api.deleteQueueJob(j.id)));
+        onShowToast(`Cleared ${completedJobs.length} completed job(s).`, 'success');
+        await onRefreshQueue();
+      } catch (e: any) { onShowToast(`Clear completed failed: ${e.message}`, 'error'); }
+    }
+  };
+
+  const handleClearFailed = async () => {
+    const failedList = queue.filter(q => q.status === 'failed');
+    if (failedList.length === 0) {
+      onShowToast('No failed jobs to clear.', 'info');
+      return;
+    }
+    if (confirm(`Remove ${failedList.length} failed job(s) from the queue?`)) {
+      try {
+        await Promise.all(failedList.map(j => api.deleteQueueJob(j.id)));
+        onShowToast(`Cleared ${failedList.length} failed job(s).`, 'success');
+        await onRefreshQueue();
+      } catch (e: any) { onShowToast(`Clear failed jobs failed: ${e.message}`, 'error'); }
+    }
+  };
+
   const handleClearQueue = async () => {
     if (confirm('Clear all completed, failed, and pending jobs from the queue?')) {
       try {
@@ -922,8 +948,24 @@ export const Queue: React.FC<QueueProps> = ({
             {autoRetryEnabled && <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping"></span>}
           </button>
 
+          {queue.some(q => q.status === 'completed') && (
+            <button onClick={handleClearCompleted} disabled={isProcessing}
+              title="Clear Completed Pins"
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/50 text-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Clear Completed
+            </button>
+          )}
+
+          {queue.some(q => q.status === 'failed') && (
+            <button onClick={handleClearFailed} disabled={isProcessing}
+              title="Clear Failed Pins"
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 transition-all flex items-center gap-1.5 cursor-pointer">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> Clear Failed
+            </button>
+          )}
+
           <button onClick={handleClearQueue} disabled={isProcessing}
-            title="Clear Queue"
+            title="Clear Entire Queue"
             style={{
               padding: '10px 12px', borderRadius: 12, cursor: isProcessing ? 'not-allowed' : 'pointer',
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
@@ -934,6 +976,90 @@ export const Queue: React.FC<QueueProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Active Execution Panel (Persistent Across All View Modes) */}
+      {isProcessing && (
+        <div style={{ 
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 18, padding: 24, display: 'flex', flexDirection: 'column', gap: 18
+        }}>
+          {/* Top row: active job info + overall progress */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <RefreshCw className="w-4 h-4" style={{ color: '#e60023', animation: 'spin 1s linear infinite' }} />
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                {isPaused ? 'Paused' : 'Publishing'}
+              </span>
+            </div>
+            <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+              {processedCount} / {totalCount} · {overallPct}%
+            </span>
+          </div>
+
+          {/* Overall progress bar */}
+          <div style={{ position: 'relative' }}>
+            <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', borderRadius: 99, 
+                background: isPaused ? '#fb923c' : 'linear-gradient(90deg, #e60023, #ff6b9d)',
+                width: `${overallPct}%`,
+                transition: 'width 0.5s ease, background 0.3s ease',
+                boxShadow: isPaused ? '0 0 10px rgba(251,146,60,0.4)' : '0 0 12px rgba(230,0,35,0.5)'
+              }} />
+            </div>
+          </div>
+
+          {/* Currently running job */}
+          {runningJob && (
+            <div style={{ 
+              background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '14px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              border: '1px solid rgba(255,255,255,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {/* Thumbnail */}
+                <div style={{ width: 32, height: 44, background: 'rgba(0,0,0,0.4)', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                  {runningJob.imagePath && (
+                    <img src={`media:///${runningJob.imagePath.replace(/\\/g, '/')}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                </div>
+                <div>
+                  <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', display: 'block' }}>Currently Processing</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', display: 'block', marginTop: 2 }}>{runningJob.title || 'Untitled Pin'}</span>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 1 }}>Board: {runningJob.boardName}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#fb923c' }}>{currentProgress}%</span>
+                <div style={{ width: 60, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#fb923c', borderRadius: 99, width: `${currentProgress}%`, transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live Log Console */}
+          <div style={{ 
+            background: 'rgba(0,0,0,0.4)', borderRadius: 12, padding: '12px 14px',
+            border: '1px solid rgba(255,255,255,0.04)', maxHeight: 160, overflowY: 'auto',
+            fontFamily: 'monospace', fontSize: 11
+          }} ref={logRef}>
+            {logMessages.length === 0 ? (
+              <div style={{ color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Waiting for publisher log...</div>
+            ) : logMessages.map((msg, i) => (
+              <div key={i} style={{ 
+                display: 'flex', gap: 10, padding: '2px 0',
+                borderBottom: i < logMessages.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none'
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>[{msg.ts}]</span>
+                <span style={{ color: i === logMessages.length - 1 ? '#34d399' : 'rgba(255,255,255,0.5)', wordBreak: 'break-word' }}>
+                  {msg.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* View Mode Selector Tabs */}
       <div className="flex items-center justify-between bg-slate-950/80 p-2 rounded-2xl border border-slate-850 shadow-lg">
@@ -1131,89 +1257,7 @@ export const Queue: React.FC<QueueProps> = ({
         </div>
       )}
 
-      {/* Active Execution Panel */}
-      {isProcessing && (
-        <div style={{ 
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 18, padding: 24, display: 'flex', flexDirection: 'column', gap: 18
-        }}>
-          {/* Top row: active job info + overall progress */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <RefreshCw className="w-4 h-4" style={{ color: '#e60023', animation: 'spin 1s linear infinite' }} />
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                {isPaused ? 'Paused' : 'Publishing'}
-              </span>
-            </div>
-            <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-              {processedCount} / {totalCount} · {overallPct}%
-            </span>
-          </div>
 
-          {/* Overall progress bar */}
-          <div style={{ position: 'relative' }}>
-            <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
-              <div style={{ 
-                height: '100%', borderRadius: 99, 
-                background: isPaused ? '#fb923c' : 'linear-gradient(90deg, #e60023, #ff6b9d)',
-                width: `${overallPct}%`,
-                transition: 'width 0.5s ease, background 0.3s ease',
-                boxShadow: isPaused ? '0 0 10px rgba(251,146,60,0.4)' : '0 0 12px rgba(230,0,35,0.5)'
-              }} />
-            </div>
-          </div>
-
-          {/* Currently running job */}
-          {runningJob && (
-            <div style={{ 
-              background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '14px 16px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              border: '1px solid rgba(255,255,255,0.05)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                {/* Thumbnail */}
-                <div style={{ width: 32, height: 44, background: 'rgba(0,0,0,0.4)', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
-                  {runningJob.imagePath && (
-                    <img src={`media:///${runningJob.imagePath.replace(/\\/g, '/')}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                </div>
-                <div>
-                  <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', display: 'block' }}>Currently Processing</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.9)', display: 'block', marginTop: 2 }}>{runningJob.title || 'Untitled Pin'}</span>
-                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 1 }}>Board: {runningJob.boardName}</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#fb923c' }}>{currentProgress}%</span>
-                <div style={{ width: 60, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: '#fb923c', borderRadius: 99, width: `${currentProgress}%`, transition: 'width 0.4s ease' }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Live Log Console */}
-          <div style={{ 
-            background: 'rgba(0,0,0,0.4)', borderRadius: 12, padding: '12px 14px',
-            border: '1px solid rgba(255,255,255,0.04)', maxHeight: 160, overflowY: 'auto',
-            fontFamily: 'monospace', fontSize: 11
-          }} ref={logRef}>
-            {logMessages.length === 0 ? (
-              <div style={{ color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Waiting for publisher log...</div>
-            ) : logMessages.map((msg, i) => (
-              <div key={i} style={{ 
-                display: 'flex', gap: 10, padding: '2px 0',
-                borderBottom: i < logMessages.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none'
-              }}>
-                <span style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>[{msg.ts}]</span>
-                <span style={{ color: i === logMessages.length - 1 ? '#34d399' : 'rgba(255,255,255,0.5)', wordBreak: 'break-word' }}>
-                  {msg.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Multi-Select Floating Action Bar */}
       {selectedJobIds.length > 0 && (

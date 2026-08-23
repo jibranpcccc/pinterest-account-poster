@@ -158,27 +158,27 @@ export function processDynamicTemplate(
 
 export const SPINTAX_PRESETS = [
   {
-    id: 'listicle',
-    name: '📌 Viral Listicle',
-    title: '{Top 10|Best 15|20+ Must-Try} {filename} Ideas for {year}',
-    description: '{Check out|Discover|Explore} these {stunning|amazing|creative} {filename} ideas! {Whether you need|If you want} {inspiration|fresh concepts|tips}, save this pin to your {board} board. Click to read the full guide!'
+    id: 'clean_guide',
+    name: '🎯 High-Intent Search Guide',
+    title: '{filename} Guide: {Top|Best|Essential} {board} Ideas for {year}',
+    description: '{filename} provides practical inspiration and clean styling for your {board} collection. This look focuses on natural texture and balanced proportions for everyday wear. Save this pin for your next style update.'
   },
   {
-    id: 'howto',
-    name: '💡 How-To & Tutorial',
-    title: '{How to|Step-by-Step Guide to|Easy Ways to} {filename} ({year} Edition)',
-    description: 'Looking for {easy|simple|effective} ways to master {filename}? {Here is our ultimate|Read this quick|Check out this step-by-step} breakdown. Pin #{index} of our {total}-part series! Save to {board}.'
+    id: 'tutorial_breakdown',
+    name: '📐 Step-by-Step Styling & Inspiration',
+    title: 'How to Style {filename}: {Step-by-Step|Complete|Easy} Guide',
+    description: 'Learn how to style {filename} with simple techniques that maintain shape and volume. This method works well across different settings and requires minimal daily maintenance. Pin this look for your next appointment.'
   },
   {
-    id: 'aesthetic',
-    name: '✨ Aesthetic & Outfit/Decor',
-    title: '{Aesthetic|Trendy|Modern|Cozy} {filename} Inspiration',
-    description: '{Get inspired by|Feast your eyes on|Love} this {gorgeous|stylish|vibey} {filename} setup. Perfect for your {board} collection. Click link for details! #{filename_raw}'
+    id: 'aesthetic_curation',
+    name: '🌿 Minimalist & Aesthetic Curation',
+    title: '{filename} Inspiration for {year} {board} Trends',
+    description: '{filename} showcases a refined and balanced look with textured details and soft tones. Designed to complement modern {board} aesthetics with clean lines. Save this pin to your inspiration board.'
   },
   {
-    id: 'seo_heavy',
-    name: '⚡ High-CTR SEO Generator',
-    title: '{filename} - {Ultimate|Best|Trending} {board} Ideas #{index}',
-    description: '{filename} tips and inspiration for {year}. Discover {top-rated|viral|must-have} {board} trends that work. Bookmark this pin now!'
+    id: 'deep_seo',
+    name: '⚡ Front-Loaded Search Authority',
+    title: '{filename} Ideas: {Modern|Timeless|Classic} {board} Concepts',
+    description: '{filename} highlights versatile elements tailored for {board} enthusiasts. The styling emphasizes clean contours and lasting dimension without unnecessary complexity. Reference this before your next consultation.'
   }
 ];

@@ -182,7 +182,8 @@ export class PublishExecutor {
       await this.activeContext.addInitScript(injectionScript);
     } catch (err: any) {
       await this.db.addLog('error', `Failed to launch publishing browser: ${err.message}`, { jobId: job.id });
-      browserLockManager.releaseLock();
+      // Only release if this account was the one that acquired it
+      browserLockManager.releaseLock(account.id, 'Publishing Queue');
       throw err;
     }
 
@@ -451,23 +452,30 @@ export class PublishExecutor {
           '[data-test-id="alt-text-button"]'
         ];
 
-        let altExpanded = false;
-        for (const sel of altBtnSelectors) {
+        const altInputSelectors = [
+          'textarea[data-test-id="alt-text-textarea"]',
+          'textarea[placeholder*="Explain" i]',
+          'textarea[aria-label*="Alt text" i]',
+          'input[placeholder*="Explain" i]'
+        ];
+
+        let altFilled = false;
+        for (const sel of altInputSelectors) {
           if (await page.locator(sel).first().isVisible().catch(() => false)) {
-            await page.locator(sel).first().click();
-            await this.sleep(800);
-            altExpanded = true;
+            await this.typeSlowly(page, sel, job.altText);
+            altFilled = true;
             break;
           }
         }
 
-        if (altExpanded) {
-          const altInputSelectors = [
-            'textarea[data-test-id="alt-text-textarea"]',
-            'textarea[placeholder*="Explain" i]',
-            'textarea[aria-label*="Alt text" i]',
-            'input[placeholder*="Explain" i]'
-          ];
+        if (!altFilled) {
+          for (const sel of altBtnSelectors) {
+            if (await page.locator(sel).first().isVisible().catch(() => false)) {
+              await page.locator(sel).first().click();
+              await this.sleep(800);
+              break;
+            }
+          }
 
           for (const sel of altInputSelectors) {
             if (await page.locator(sel).first().isVisible().catch(() => false)) {
@@ -587,11 +595,12 @@ export class PublishExecutor {
           
           const cleanTarget = job.boardName.trim().toLowerCase();
           
-          // Pass 1: Exact match
+          // Pass 1: Exact match (accounting for multi-line metadata like "Home Decor\n15 Pins")
           for (let i = 0; i < count; i++) {
             const item = allBoardItems.nth(i);
             const text = (await item.innerText().catch(() => '')).trim().toLowerCase();
-            if (text === cleanTarget) {
+            const firstLine = text.split('\n')[0].trim();
+            if (firstLine === cleanTarget || text === cleanTarget) {
               await item.click({ force: true });
               boardSelected = true;
               await this.sleep(getActionDelay());
@@ -689,6 +698,22 @@ export class PublishExecutor {
                 // Wait for dialog to close / board creation to settle
                 await this.sleep(3000);
                 boardSelected = true;
+
+                // Sync newly created board into local database
+                try {
+                  const newBoardId = Buffer.from(`${account.id}:${job.boardName}`).toString('base64').replace(/=/g, '');
+                  const slug = job.boardName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^[-]+|[-]+$/g, '');
+                  await this.db.saveBoard({
+                    id: newBoardId,
+                    accountId: account.id,
+                    name: job.boardName,
+                    url: `https://www.pinterest.com/${account.username || '_'}/${slug}/`,
+                    lastFetchedAt: new Date().toISOString()
+                  });
+                  console.log(`[PublishExecutor] Saved newly created board '${job.boardName}' to database.`);
+                } catch (e) {
+                  console.warn('[PublishExecutor] Failed to cache newly created board in DB:', e);
+                }
               } else {
                 throw new Error(`Create board submit button not found for board: ${job.boardName}`);
               }
@@ -786,13 +811,10 @@ export class PublishExecutor {
 
       await this.checkPauseAndStop(page, (msg) => onProgress({ progress: 88, message: msg, status: 'running' }));
 
-      // ===== STEP 7: Click Publish =====
-      onProgress({ progress: 90, message: 'Publishing Pin...', status: 'running' });
-      await this.db.addLog('info', 'Clicking Publish button...', { jobId: job.id });
-
-      // ===== STEP 7: Click Publish =====
-      onProgress({ progress: 90, message: 'Publishing Pin...', status: 'running' });
-      await this.db.addLog('info', 'Clicking Publish button...', { jobId: job.id });
+      // ===== STEP 7: Click Publish / Schedule =====
+      const isScheduling = Boolean(job.scheduledDate && job.scheduledTime);
+      onProgress({ progress: 90, message: isScheduling ? 'Scheduling Pin...' : 'Publishing Pin...', status: 'running' });
+      await this.db.addLog('info', isScheduling ? 'Clicking Schedule button...' : 'Clicking Publish button...', { jobId: job.id });
 
       const publishLocators = [
         '[data-test-id="board-dropdown-save-button"]',
@@ -800,10 +822,14 @@ export class PublishExecutor {
         '[data-test-id="board-dropdown-save-button"] button',
         '[data-test-id="create-pin-submit-button"]',
         '[data-test-id="pin-builder-publish-button"]',
+        '[data-test-id="pin-builder-schedule-button"]',
+        '[data-test-id="ScheduleButton"]',
         '[data-test-id="submit-button"]',
         'button:has-text("Publish")',
+        'button:has-text("Schedule")',
         'button:has-text("Save")',
         'div[role="button"]:has-text("Publish")',
+        'div[role="button"]:has-text("Schedule")',
         'div[role="button"]:has-text("Save")',
         'button[type="submit"]',
       ];
@@ -817,11 +843,14 @@ export class PublishExecutor {
           const count = await loc.count().catch(() => 0);
           for (let i = 0; i < count; i++) {
             const btn = loc.nth(i);
-            if (await btn.isVisible().catch(() => false) && await btn.isEnabled().catch(() => false)) {
+            const isVis = await btn.isVisible().catch(() => false);
+            const isEn = await btn.isEnabled().catch(() => false);
+            const ariaDis = await btn.getAttribute('aria-disabled').catch(() => null);
+            if (isVis && isEn && ariaDis !== 'true') {
               await this.sleep(400);
               await btn.click({ force: true });
               published = true;
-              console.log(`[PublishExecutor] Successfully clicked publish button with selector: ${selector}`);
+              console.log(`[PublishExecutor] Successfully clicked action button with selector: ${selector}`);
               break;
             }
           }
@@ -862,7 +891,7 @@ export class PublishExecutor {
           '[data-test-id="toast-message"] a[href*="/pin/"]',
           'div[role="alert"] a[href*="/pin/"]',
           'div[role="dialog"] a[href*="/pin/"]',
-          'a[href*="/pin/"]'
+          '[data-test-id*="toast"] a[href*="/pin/"]',
         ];
 
         for (const sel of pinLinkLocators) {

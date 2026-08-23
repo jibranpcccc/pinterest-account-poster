@@ -29,9 +29,13 @@ class BrowserLockManager {
   }
 
   /**
-   * Releases the global browser lock.
+   * Releases the global browser lock. If ownerAccountId or taskName is provided, only releases if it matches current holder.
    */
-  public releaseLock(): void {
+  public releaseLock(ownerAccountId?: string, ownerTaskName?: string): void {
+    if (ownerAccountId && this.activeAccountId && this.activeAccountId !== ownerAccountId) {
+      console.warn(`⚠️ [BrowserLockManager] Ignored releaseLock from non-owner [${ownerAccountId}]. Current lock owner is [${this.activeAccountId}] (${this.activeTaskName}).`);
+      return;
+    }
     console.log(`🔓 [BrowserLockManager] Lock RELEASED from account [${this.activeAccountId}] by task [${this.activeTaskName}]`);
     this.activeAccountId = null;
     this.activeTaskName = null;

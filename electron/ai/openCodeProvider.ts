@@ -54,7 +54,7 @@ function hasCompleteSentence(text: string): boolean {
 }
 
 function containsEmoji(text: string): boolean {
-  return /\p{Emoji}/u.test(text || '');
+  return /\p{Extended_Pictographic}/u.test(text || '');
 }
 
 function containsHashtag(text: string): boolean {
@@ -822,7 +822,7 @@ Return ONLY raw JSON:
     const localPaths = [
       LOCAL_CF_ACCOUNTS_PATH,                                                        // resolved _PROJECT_ROOT/cloudflare_accounts.txt
       process.resourcesPath ? path.join(process.resourcesPath, 'cloudflare_accounts.txt') : null,  // packaged .exe resources/
-      path.join(app.getPath('userData'), 'cloudflare_accounts.txt'),                // user placed file in AppData
+      path.join(getUserDataPath(), 'cloudflare_accounts.txt'),                // user placed file in AppData
       path.join(__dirname, '..', '..', 'cloudflare_accounts.txt'),                  // dev fallback
       path.join(__dirname, '..', '..', 'cloudflare_working_accounts.txt'),          // legacy name
     ].filter(Boolean) as string[];

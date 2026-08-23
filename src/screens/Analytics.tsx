@@ -84,13 +84,15 @@ export const Analytics: React.FC<AnalyticsProps> = ({ accounts, onShowToast }) =
     }
   }, [accounts]);
 
-  const handleRefreshStats = async (accountId: string) => {
+  const handleRefreshStats = async (accountId: string, skipReloadHistory = false) => {
     setLoadingAccounts(prev => ({ ...prev, [accountId]: true }));
     try {
       onShowToast(`Syncing latest analytics for account...`, 'info');
       const data = await api.fetchAnalytics(accountId);
       setStats(prev => ({ ...prev, [accountId]: data }));
-      await loadHistory();
+      if (!skipReloadHistory) {
+        await loadHistory();
+      }
       onShowToast(`Analytics updated and recorded!`, 'success');
     } catch (err: any) {
       onShowToast(`Failed to fetch analytics: ${err.message}`, 'error');
@@ -101,8 +103,10 @@ export const Analytics: React.FC<AnalyticsProps> = ({ accounts, onShowToast }) =
 
   const handleSyncAll = async () => {
     for (const account of accounts) {
-      await handleRefreshStats(account.id);
+      await handleRefreshStats(account.id, true);
     }
+    await loadHistory();
+    onShowToast('Synced latest analytics for all accounts!', 'success');
   };
 
   const toggleAccountSelection = (accountId: string) => {
@@ -125,32 +129,36 @@ export const Analytics: React.FC<AnalyticsProps> = ({ accounts, onShowToast }) =
         if (s.snapshotDate) allDatesSet.add(s.snapshotDate);
       });
     });
-    const sorted = Array.from(allDatesSet).sort();
-    return sorted.slice(-timeRange);
+
+    const sortedDates = Array.from(allDatesSet).sort();
+    return sortedDates.slice(-timeRange);
   }, [historyData, timeRange]);
 
-  // Executive KPI summary calculations
+  // Aggregate KPI metrics based on filtered date window
   const kpiTotals = useMemo(() => {
     let totalFollowers = 0;
     let totalViews = 0;
     let totalImpressions = 0;
     let totalEngagements = 0;
-    let followerGain30d = 0;
+    let followerGainWindow = 0;
 
     selectedAccountIds.forEach(accId => {
       const history = historyData[accId] || [];
       if (history.length > 0) {
-        const latest = history[history.length - 1];
-        const oldest = history[0];
+        const latestDate = dates[dates.length - 1];
+        const oldestDate = dates[0];
+        const latest = history.find(h => h.snapshotDate === latestDate) || history[history.length - 1];
+        const oldest = history.find(h => h.snapshotDate === oldestDate) || history[0];
+
         totalFollowers += latest.followers || 0;
         totalViews += latest.monthlyViews || 0;
         totalImpressions += latest.impressions || 0;
         totalEngagements += latest.engagements || 0;
-        followerGain30d += ((latest.followers || 0) - (oldest.followers || 0));
+        followerGainWindow += ((latest.followers || 0) - (oldest.followers || 0));
       }
     });
 
-    const avgDailyFollowerGain = dates.length > 0 ? (followerGain30d / dates.length).toFixed(1) : '0';
+    const avgDailyFollowerGain = dates.length > 0 ? (followerGainWindow / dates.length).toFixed(1) : '0';
     const engagementRate = totalImpressions > 0 ? ((totalEngagements / totalImpressions) * 100).toFixed(2) : '0.00';
 
     return {
@@ -158,7 +166,7 @@ export const Analytics: React.FC<AnalyticsProps> = ({ accounts, onShowToast }) =
       totalViews,
       totalImpressions,
       totalEngagements,
-      followerGain30d,
+      followerGain30d: followerGainWindow,
       avgDailyFollowerGain,
       engagementRate
     };
@@ -195,14 +203,16 @@ export const Analytics: React.FC<AnalyticsProps> = ({ accounts, onShowToast }) =
       });
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(e => e.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = rows.map(e => e.join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', blobUrl);
     link.setAttribute('download', `pinterest_analytics_report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
 
     onShowToast('Analytics CSV exported successfully!', 'success');
   };

@@ -143,6 +143,12 @@ export class RepinExecutor {
         await pin.scrollIntoViewIfNeeded().catch(() => {});
         await page.waitForTimeout(600);
 
+        let capturedPinUrl = '';
+        const cardPinHref = await pin.locator('a[href*="/pin/"]').first().getAttribute('href').catch(() => '');
+        if (cardPinHref && cardPinHref.includes('/pin/')) {
+          capturedPinUrl = cardPinHref.startsWith('http') ? cardPinHref : `https://www.pinterest.com${cardPinHref.split('?')[0]}`;
+        }
+
         let pinSaved = false;
 
         // ─────────────────────────────────────────────────────────────
@@ -153,8 +159,8 @@ export class RepinExecutor {
           await page.waitForTimeout(400);
 
           const hoverSaveBtn = pin.locator([
-            '[data-test-id="PinCardHeaderSaveButton"]',
             '[data-test-id="board-dropdown-select-button"]',
+            '[data-test-id="PinCardHeaderSaveButton"]',
             '[data-test-id="SaveButton"]',
             'button:has-text("Save")',
             'button[aria-label*="Save" i]'
@@ -176,7 +182,7 @@ export class RepinExecutor {
               await page.waitForTimeout(600);
             }
 
-            const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^[-]+|[-]+$/g, '');
             const saveConfirmBtn = page.locator([
               `[data-test-id="board-row-${slugifiedBoard}"] button`,
               `[data-test-id="board-row-${targetBoard}"] button`,
@@ -196,66 +202,68 @@ export class RepinExecutor {
         }
 
         // ─────────────────────────────────────────────────────────────
-        // STRATEGY 2: Pin Detail Navigation & Modal Save Fallback
+        // STRATEGY 2: Click Pin to Open Detail Modal & Select Board
         // ─────────────────────────────────────────────────────────────
         if (!pinSaved) {
           try {
+            console.log(`[Repin] Trying Detail Navigation strategy for attempt ${attempt}...`);
             const pinLink = pin.locator('a[href*="/pin/"]').first();
-            if (await pinLink.isVisible().catch(() => false)) {
-              await pinLink.click({ force: true }).catch(() => pin.click({ force: true }));
+            if (await pinLink.isVisible({ timeout: 1500 }).catch(() => false)) {
+              await pinLink.click({ force: true });
             } else {
-              await pin.click({ force: true }).catch(() => {});
+              await pin.click({ force: true });
+            }
+            await page.waitForTimeout(2500);
+
+            const detailUrl = page.url();
+            if (detailUrl.includes('/pin/')) {
+              capturedPinUrl = detailUrl;
             }
 
-            await page.waitForTimeout(1500);
-
-            // Look for board dropdown or save button on pin detail / modal
-            const boardDropdown = page.locator([
+            // Open board dropdown in detail modal
+            const detailBoardSelectBtn = page.locator([
               '[data-test-id="board-dropdown-select-button"]',
-              '[data-test-id="board-selection-dropdown"]',
-              'button[aria-label*="Select board" i]',
-              'button[aria-label*="Save to board" i]',
-              'button[aria-label*="board" i]',
-              'div[role="button"][aria-label*="board" i]'
+              '[data-test-id="board-picker-button"]',
+              'button[aria-haspopup="listbox"]',
+              'div[role="button"]:has-text("Save")'
             ].join(', ')).first();
 
-            if (await boardDropdown.isVisible({ timeout: 2500 }).catch(() => false)) {
-              await boardDropdown.click({ force: true });
-              await page.waitForTimeout(1000);
+            if (await detailBoardSelectBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+              await detailBoardSelectBtn.click({ force: true });
+              await page.waitForTimeout(800);
 
-              const boardSearch = page.locator([
+              const detailSearch = page.locator([
                 '[data-test-id="board-search-input"]',
                 'input[placeholder*="Search" i]',
                 'input[aria-label*="Search" i]'
               ].join(', ')).first();
 
-              if (await boardSearch.isVisible({ timeout: 1200 }).catch(() => false)) {
-                await boardSearch.fill(targetBoard);
+              if (await detailSearch.isVisible({ timeout: 1200 }).catch(() => false)) {
+                await detailSearch.fill(targetBoard);
                 await page.waitForTimeout(600);
               }
 
-              const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-              const saveBtn = page.locator([
+              const slugifiedBoard = targetBoard.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^[-]+|[-]+$/g, '');
+              const boardRow = page.locator([
                 `[data-test-id="board-row-${slugifiedBoard}"] button`,
-                `[data-test-id="board-row-${targetBoard}"] button`,
                 `[data-test-id="board-drop-item"]:has-text("${targetBoard}") button`,
                 `div[role="option"]:has-text("${targetBoard}")`,
                 `div[data-test-id*="board-row"]:has-text("${targetBoard}")`
               ].join(', ')).first();
 
-              if (await saveBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await saveBtn.click({ force: true });
+              if (await boardRow.isVisible({ timeout: 1500 }).catch(() => false)) {
+                await boardRow.click({ force: true });
                 await page.waitForTimeout(1500);
                 pinSaved = true;
               }
             }
 
-            // Secondary fallback: Click primary Save button
+            // Fallback direct save if dropdown search failed
             if (!pinSaved) {
               const primarySave = page.locator([
                 '[data-test-id="SaveButton"]',
-                'button:has-text("Save")',
-                'div[role="button"]:has-text("Save")'
+                '[data-test-id="board-dropdown-save-button"]',
+                'button:has-text("Save")'
               ].join(', ')).first();
 
               if (await primarySave.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -263,6 +271,11 @@ export class RepinExecutor {
                 await page.waitForTimeout(1500);
                 pinSaved = true;
               }
+            }
+
+            // Record URL if on pin page
+            if (page.url().includes('/pin/')) {
+              capturedPinUrl = page.url();
             }
 
             // Close modal or return to search page if navigated away
@@ -278,8 +291,8 @@ export class RepinExecutor {
 
         if (pinSaved) {
           savedCount++;
-          const currentUrl = page.url();
-          liveLinks.push(currentUrl.includes('/pin/') ? currentUrl : `https://www.pinterest.com/pin/auto_${Date.now()}`);
+          const finalPinUrl = capturedPinUrl || (page.url().includes('/pin/') ? page.url() : `https://www.pinterest.com/pin/auto_${Date.now()}`);
+          liveLinks.push(finalPinUrl);
           onProgress(`✅ Successfully saved pin ${savedCount}/${job.count} to "${targetBoard}"!`);
           await page.waitForTimeout(2000);
         } else {

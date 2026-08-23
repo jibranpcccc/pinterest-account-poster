@@ -19,6 +19,7 @@ import { Analytics } from './screens/Analytics';
 import { AutoRepin } from './screens/AutoRepin';
 
 // Import Components
+import { HeaderBar } from './components/HeaderBar';
 import { Toast, ToastType } from './components/Toast';
 import { api } from './services/api';
 import { Account, Draft, QueueJob, Log } from './types';
@@ -173,13 +174,21 @@ export default function App() {
 
   const activeQueueCount = queue.filter(q => q.status === 'pending' || q.status === 'running').length;
   const connectedCount = accounts.filter(a => a.sessionStatus === 'connected').length;
+  const isProcessingQueue = queue.some(q => q.status === 'running');
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+
+  const handleToggleMockMode = async () => {
+    const nextVal = !isMockMode;
+    await api.saveSetting('mockMode', nextVal);
+    setIsMockMode(nextVal);
+    showToast(nextVal ? 'Sandbox Mode enabled.' : 'Production Live Automation Mode enabled.', 'info');
+  };
 
   return (
     <div className="flex h-screen text-slate-100 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%)' }}>
       
       {/* Sidebar */}
-      <aside className="w-64 flex flex-col justify-between flex-shrink-0 relative" style={{ 
+      <aside className="w-64 flex flex-col justify-between flex-shrink-0 relative select-none" style={{ 
         background: 'rgba(10, 10, 18, 0.95)',
         borderRight: '1px solid rgba(255,255,255,0.06)',
         backdropFilter: 'blur(20px)'
@@ -201,22 +210,9 @@ export default function App() {
             </div>
             <div>
               <h2 className="text-sm font-black text-white tracking-wide leading-tight">PIN PUBLISHER</h2>
-              <span className="text-[10px] font-bold tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>AI POWERED</span>
+              <span className="text-[10px] font-bold tracking-widest text-red-400">AI PRO 2026</span>
             </div>
           </div>
-
-          {/* Mock Mode Badge */}
-          {isMockMode && (
-            <div style={{ 
-              background: 'rgba(245,158,11,0.1)', 
-              border: '1px solid rgba(245,158,11,0.2)',
-              borderRadius: 10, padding: '6px 10px',
-              display: 'flex', alignItems: 'center', gap: 6
-            }}>
-              <Zap className="w-3 h-3" style={{ color: '#f59e0b', flexShrink: 0 }} />
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', letterSpacing: '0.05em' }}>DEMO SANDBOX MODE</span>
-            </div>
-          )}
 
           {/* Nav */}
           <nav className="flex flex-col gap-1">
@@ -231,28 +227,26 @@ export default function App() {
                 <button
                   key={id}
                   onClick={() => handleNavigate(id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '9px 12px', borderRadius: 11, width: '100%',
-                    background: isActive ? 'rgba(230,0,35,0.12)' : 'transparent',
-                    border: isActive ? '1px solid rgba(230,0,35,0.2)' : '1px solid transparent',
-                    color: isActive ? '#f87171' : 'rgba(255,255,255,0.45)',
-                    fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                    transition: 'all 0.15s ease',
-                    boxShadow: isActive ? '0 0 20px rgba(230,0,35,0.08) inset' : 'none'
-                  }}
-                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
-                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl w-full text-xs font-bold transition-all text-left relative cursor-pointer group ${
+                    isActive 
+                      ? 'bg-red-500/15 text-red-400 border border-red-500/30 shadow-lg shadow-red-950/40' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
+                  }`}
                 >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span style={{ flex: 1 }}>{label}</span>
+                  {/* Left Active Glow Indicator */}
+                  {isActive && (
+                    <span className="w-1.5 h-4 rounded-full bg-red-500 shadow-md shadow-red-500/80 -ml-1"></span>
+                  )}
+                  <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'text-red-400 scale-110' : 'text-slate-400 group-hover:text-slate-200'}`} />
+                  <span className="flex-1 truncate">{label}</span>
                   {badge !== null && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 6,
-                      background: id === 'queue' ? 'rgba(230,0,35,0.2)' : 'rgba(255,255,255,0.08)',
-                      color: id === 'queue' ? '#f87171' : 'rgba(255,255,255,0.5)',
-                      border: id === 'queue' ? '1px solid rgba(230,0,35,0.2)' : '1px solid rgba(255,255,255,0.08)'
-                    }}>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                      id === 'queue' && isProcessingQueue
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                        : id === 'queue'
+                        ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
                       {badge}
                     </span>
                   )}
@@ -294,12 +288,26 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main style={{ 
-        flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column',
+        flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column',
         background: 'transparent'
       }}>
-        <div style={{ padding: '32px 40px', minHeight: '100%' }}>
+        {/* Top Header Bar */}
+        <HeaderBar
+          activeScreen={activeScreen}
+          isMockMode={isMockMode}
+          onToggleMockMode={handleToggleMockMode}
+          connectedCount={connectedCount}
+          totalAccountsCount={accounts.length}
+          activeQueueCount={activeQueueCount}
+          isProcessingQueue={isProcessingQueue}
+          onNavigate={handleNavigate}
+          onRefresh={refreshAll}
+        />
+
+        {/* Scrollable Viewport */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '28px 36px' }}>
           {activeScreen === 'dashboard' && (
             <Dashboard accounts={accounts} drafts={drafts} queue={queue} logs={logs} onNavigate={handleNavigate} onRefresh={refreshAll} isMockMode={isMockMode} />
           )}
