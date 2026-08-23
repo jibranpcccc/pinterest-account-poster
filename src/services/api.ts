@@ -520,8 +520,43 @@ const getApiMethod = (methodName: string) => {
       },
       callAI: async (action: string, payload: any) => {
         console.log('Mock AI call:', action, payload);
+        const kw = payload?.keyword || payload?.topic || payload?.boardName || 'Layered Hair';
         if (action === 'validatePinMetadata') {
           return { isValid: true, warnings: [] };
+        }
+        if (action === 'generateTitleSuggestions') {
+          return [
+            `${kw} On Long Wavy Hair With Face-Framing Layers`,
+            `How To Style A Modern ${kw} For Volume`,
+            `${kw} Cut For Natural Texture And Everyday Movement`,
+            `${kw} Style Ideas For Medium Length Hair`,
+            `${kw} Haircut With Soft Blended Ends`
+          ];
+        }
+        if (action === 'generateDescriptionSuggestions') {
+          return [
+            `${kw} creates soft movement and natural texture that works well on many hair types. The cut is shaped through the mid-lengths with lightweight ends. Save this pin for your next salon idea.`,
+            `${kw} gives a clean finish and effortless shape for everyday wear. The stylist used face-framing pieces to add soft dimension. Pin this look to your board for style inspiration.`,
+            `${kw} works with natural texture and requires minimal heat styling. The length is kept balanced around the shoulders for a practical finish. Save this pin for your next haircut.`
+          ];
+        }
+        if (action === 'improveAltText') {
+          return `Person with a ${kw} hairstyle featuring soft face-framing layers and natural movement.`;
+        }
+        if (action === 'generateKeywords') {
+          return [
+            kw, `${kw} ideas`, `${kw} hairstyle`, `${kw} for fine hair`,
+            `${kw} tutorial`, `how to style ${kw}`, `${kw} short`, `${kw} medium`,
+            `${kw} 2026`, `${kw} inspo`
+          ];
+        }
+        if (action === 'generateSEOComplete' || action === 'analyzeImage') {
+          return {
+            title: `${kw} On Long Wavy Hair With Face-Framing Layers`,
+            description: `${kw} creates soft movement and natural texture that works well on many hair types. The cut is shaped through the mid-lengths with lightweight ends. Save this pin for your next salon idea.`,
+            altText: `Person with a ${kw} hairstyle featuring soft face-framing layers and natural movement.`,
+            shouldPost: true
+          };
         }
         return null;
       },
