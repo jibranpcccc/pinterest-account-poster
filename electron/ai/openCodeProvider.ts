@@ -611,16 +611,17 @@ Return ONLY a valid JSON array of strings, e.g. ["query one", "query two", "quer
   }
 
   public async generateTitleSuggestions(input: AIInput): Promise<string[]> {
-    const system = `You are an elite Pinterest SEO strategist specializing in 2026 visual search algorithms across all categories (Home Decor, Beauty & Hair, Fashion, Food & Recipes, Lifestyle, Architecture, DIY, and Products).
-Generate 5 unique, high-ranking Pin titles.
+    const board = input.boardName || input.topic || 'Hairstyle Ideas';
+    const system = `You are an elite Pinterest SEO copywriter and strategist specializing in the HAIRSTYLE NICHE for 2026 Pinterest visual search algorithms.
+Generate 5 unique, click-worthy, search-optimized Pin titles.
 
-STRICT 2026 PINTEREST TITLE RULES:
-1. 45–80 characters in clean Title Case.
-2. Front-load primary search query in the first 30 characters (for mobile card truncation).
-3. Include the core topic/subject + 2 specific visual modifiers.
-4. STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus (+).
-5. NO clickbait buzzwords (Must-Have, Stunning, Viral, Obsession, Perfection).
-6. Natural, human-written, search-intent driven phrasing.
+CRITICAL BOARD MATCHING & HAIRSTYLE RULES:
+1. MANDATORY BOARD MATCH: Every title MUST directly incorporate and match the Board Name ("${board}") or its primary search query.
+2. HAIRSTYLE SPECIFICITY: Include specific haircut names, hair colors, hair textures, or styling modifiers (e.g. layers, curls, waves, bob, braids, bangs, blowout, wolf cut, balayage, fade, updo).
+3. LENGTH: 45–80 characters in clean Title Case.
+4. FRONT-LOAD: Front-load the primary search query in the first 30 characters (mobile grid truncation).
+5. CLEAN: STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus (+).
+6. NO CLICKBAIT: NO spam words (Must-Have, Stunning, Viral, Obsession, Perfection).
 
 OUTPUT FORMAT:
 Return ONLY a raw JSON array of 5 strings.`;
@@ -635,30 +636,29 @@ Return ONLY a raw JSON array of 5 strings.`;
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate titles via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
+      const base = input.boardName || input.keyword || input.topic || 'Hairstyle Ideas';
       return [
-        `${base} Ideas for a Balanced and Clean Aesthetic`,
-        `How To Style ${base} with Natural Textures and Warm Accents`,
-        `${base} Inspiration Guide for Modern Spaces and Looks`,
-        `Effortless ${base} Concepts with Timeless Elegance`,
-        `${base} Showcase with Neutral Tones and Refined Detailing`
+        `${base} on Layered Hair with Face-Framing Details`,
+        `How To Style ${base} with Natural Texture and Movement`,
+        `${base} Inspiration for Modern Haircuts and Daily Looks`,
+        `Effortless ${base} for Balanced Volume and Clean Edges`,
+        `${base} Styling Guide with Soft Tones and Easy Maintenance`
       ];
     }
   }
 
   public async generateDescriptionSuggestions(input: AIInput): Promise<string[]> {
-    const system = `You are an elite Pinterest SEO copywriter specializing in 2026 visual search and organic discovery across all niches.
-Generate 3 unique Pin descriptions.
+    const board = input.boardName || input.topic || 'Hairstyles';
+    const system = `You are an elite Pinterest SEO copywriter specializing in the HAIRSTYLE NICHE for 2026 Pinterest visual search.
+Generate 3 unique, high-performing Pin descriptions.
 
-STRICT 2026 PINTEREST DESCRIPTION RULES:
-1. 240–360 characters total.
-2. Exactly 3 to 4 complete, grammatical sentences ending with terminal punctuation.
-3. Sentence 1 starts directly with the topic or subject keyword.
-4. FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
-5. Weave 2–4 high-intent Pinterest search queries naturally into conversational context.
-6. Last sentence MUST be a soft, actionable call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
-7. STRICTLY ZERO hashtags (#), ZERO emojis.
-8. NO spam buzzwords (stunning, viral, must-have, perfection).
+CRITICAL BOARD MATCHING & HAIRSTYLE RULES:
+1. MANDATORY BOARD MATCH: Directly align with the Board Name ("${board}"). Sentence 1 must start with the board keyword or hairstyle name.
+2. 240–360 characters total. Exactly 3 to 4 complete, grammatical sentences ending with terminal punctuation.
+3. FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
+4. Weave 2–4 high-intent Pinterest search queries naturally into practical hair advice (hair care, styling tips, face shapes, volume, texture).
+5. Last sentence MUST be a soft hair CTA (e.g. "Save this pin for your next hair appointment or stylist visit.", "Pin this look to reference when styling your hair.").
+6. STRICTLY ZERO hashtags (#), ZERO emojis.
 
 OUTPUT FORMAT:
 Return ONLY a raw JSON array of 3 strings.`;
@@ -673,23 +673,24 @@ Return ONLY a raw JSON array of 3 strings.`;
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate descriptions via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
+      const base = input.boardName || input.keyword || input.topic || 'Hairstyle Ideas';
       return [
-        `${base} brings natural balance and clean lines together for an elevated look. Incorporating thoughtful details and neutral textures creates an inviting and enduring feel. Save this pin to your board for your next project or aesthetic inspiration.`,
-        `${base} provides an effortless blend of functionality and refined style for modern living. The subtle composition and warm tones work well in any contemporary setting. Pin this look to reference when planning your upcoming space or routine.`,
-        `${base} highlights timeless craftsmanship and curated elements with minimal fuss. Focus on balanced proportions and organic accents to achieve this seamless aesthetic. Save this pin for easy reference on your ideas board.`
+        `${base} creates soft movement and natural dimension that works across many face shapes. The cut emphasizes balanced texture with clean, face-framing pieces. Save this pin to your board for your next hair appointment or styling session.`,
+        `${base} offers an effortless blend of modern shaping and manageable everyday volume. Using lightweight styling products helps maintain texture and healthy shine. Pin this look to reference with your stylist or barber.`,
+        `${base} highlights clean perimeter lines and versatile styling for any hair routine. Focus on natural texture and soft layering for a fresh, timeless appearance. Save this pin for easy inspiration before your next hair refresh.`
       ];
     }
   }
 
   public async improveAltText(input: AIInput): Promise<string> {
-    const system = `You are an accessibility and Pinterest Lens SEO specialist.
+    const board = input.boardName || input.topic || 'Hairstyle';
+    const system = `You are an accessibility and Pinterest Lens SEO specialist for the HAIRSTYLE NICHE.
 Write one concise, literal visual accessibility description of the image.
 
 STRICT RULES:
 1. 14–22 words total.
-2. Accurately describe what is physically visible: subject, colors, textures, lighting, and layout.
-3. Include primary subject keyword once naturally.
+2. Accurately describe the visible hairstyle: cut, color, length, texture, and setting.
+3. Include board keyword ("${board}") or main hairstyle keyword once naturally.
 4. STRICTLY NO marketing copy, NO CTA, NO hashtags, NO emojis, NO URLs.
 
 OUTPUT FORMAT:
@@ -702,19 +703,22 @@ Return ONLY the plain alt text string.`;
       return result.trim().replace(/^["']|["']$/g, '');
     } catch (e) {
       console.error('Failed to improve alt text via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'Curated design';
-      return `${base} with natural light, clean textures, and balanced neutral tones in an elegant setting.`;
+      const base = input.boardName || input.keyword || input.topic || 'Hairstyle';
+      return `Person with ${base} featuring soft natural movement, clean layers, and salon lighting.`;
     }
   }
 
   public async generateKeywords(input: AIInput): Promise<string[]> {
-    const system = `You are an elite Pinterest keyword research expert trained on 2026 search trends across all categories. Generate 15 high-intent Pinterest search queries for the provided niche, board, or topic.
+    const board = input.boardName || input.topic || input.keyword || 'Hairstyles';
+    const system = `You are an elite Pinterest keyword research expert for the HAIRSTYLE NICHE.
+Generate 15 high-intent Pinterest search queries specifically targeting the board: "${board}".
 
 RULES:
 1. Mix of short-tail, mid-tail, and long-tail search phrases.
-2. Reflect actual Pinterest user search intent (ideas, aesthetic, tutorial, how to, inspiration, modern, minimal, layout, styling).
-3. STRICTLY NO hashtags (#). All terms must be plain text search queries.
-4. Return ONLY a raw JSON array of 15 strings.`;
+2. Reflect actual Pinterest user search intent for hairstyles (e.g. ideas, tutorial, for round faces, for fine hair, step by step, styling, haircuts 2026, aesthetic).
+3. All keywords must match the board "${board}" and the hairstyle niche.
+4. STRICTLY NO hashtags (#). All terms must be plain text search queries.
+5. Return ONLY a raw JSON array of 15 strings.`;
 
     const user = this.buildContext(input);
 
@@ -726,12 +730,12 @@ RULES:
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate keywords via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'interior design';
+      const base = input.boardName || input.keyword || input.topic || 'hairstyle';
       return [
-        base, `${base} ideas`, `${base} aesthetic`, `${base} inspiration`,
-        `${base} styling`, `how to style ${base}`, `modern ${base}`,
-        `minimalist ${base}`, `${base} layout`, `${base} neutral tones`,
-        `${base} for beginners`, `${base} trends 2026`, `${base} cozy`, `${base} tips`, `${base} decor`
+        base, `${base} ideas`, `${base} tutorial`, `${base} for fine hair`,
+        `${base} for round face`, `how to style ${base}`, `${base} 2026`,
+        `${base} for thick hair`, `${base} face framing`, `${base} short`,
+        `${base} long`, `${base} salon cut`, `${base} technique`, `${base} haircut`, `${base} inspo`
       ];
     }
   }
@@ -772,28 +776,28 @@ Each warning must say EXACTLY what to fix and HOW.`;
   }
 
   public async generateSEOComplete(input: AIInput): Promise<{ title: string; description: string; altText: string }> {
-    const system = `You are an elite Pinterest SEO strategist trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms across all niches (Home Decor, Beauty & Hair, Fashion, Food & Recipes, Lifestyle, Architecture, DIY, and Products).
-Write high-converting, search-optimized Pin metadata based strictly on the provided context.
+    const board = input.boardName || input.topic || 'Hairstyle Ideas';
+    const system = `You are an elite Pinterest SEO strategist for the HAIRSTYLE NICHE trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms.
+Write high-converting, search-optimized Pin metadata that directly matches the Board Name: "${board}".
 
-STRICT 2026 PINTEREST RANKING RULES:
+CRITICAL 2026 PINTEREST RANKING & BOARD MATCHING RULES:
 1. TITLE (45–80 characters):
-   - Natural user search query written in clean Title Case.
+   - MANDATORY BOARD MATCH: The title MUST directly incorporate and match the Board Name ("${board}") or its core keyword.
+   - Include specific haircut, hair color, texture, or styling modifiers (e.g. layers, curls, waves, bob, braids, bangs, blowout, wolf cut, balayage, fade, updo).
    - Front-load primary search query in the first 30 characters (mobile grid truncation).
-   - Combine core subject + 2 specific visual modifiers.
-   - STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus signs (+).
-   - NO clickbait buzzwords (Must-Have, Stunning, Viral, Obsession, Perfection).
+   - Clean Title Case. STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus (+).
+   - NO clickbait buzzwords (Must-Have, Stunning, Viral, Obsession).
 
 2. DESCRIPTION (240–360 characters):
    - Exactly 3 to 4 complete, well-formed sentences ending with a period.
-   - Sentence 1 starts directly with the topic or subject keyword.
-   - FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
-   - Naturally weave 2 to 4 high-intent Pinterest search queries into conversational context.
-   - Final sentence MUST be a natural, soft call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
+   - Sentence 1 starts directly with the board keyword or hairstyle name.
+   - BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for".
+   - Naturally weave 2 to 4 high-intent Pinterest search queries into practical hair styling advice.
+   - Final sentence MUST be a hair-specific soft call-to-action (e.g. "Save this pin for your next hair appointment or stylist visit.").
    - STRICTLY ZERO hashtags (#), ZERO emojis.
 
 3. ALT TEXT (14–22 words):
-   - Exactly one complete literal accessibility sentence describing what is physically visible.
-   - Describe subjects, colors, materials, lighting, and layout for Pinterest Lens and screen readers.
+   - Exactly one complete literal accessibility sentence describing the visible hairstyle, hair color, length, texture, and setting for Pinterest Lens and screen readers.
    - NO marketing copy, NO CTA, NO hashtags, NO URLs.
 
 Return ONLY raw JSON:
@@ -818,11 +822,11 @@ Return ONLY raw JSON:
       };
     } catch (e) {
       console.error('Failed to generate complete SEO via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
+      const base = input.boardName || input.keyword || input.topic || 'Hairstyle Ideas';
       return {
-        title: `${base} Ideas for a Balanced and Clean Aesthetic`,
-        description: `${base} brings natural balance and clean lines together for an elevated look. Incorporating thoughtful details and neutral textures creates an inviting and enduring feel. Save this pin to your board for your next project or aesthetic inspiration.`,
-        altText: `${base} with natural light, clean textures, and balanced neutral tones in an elegant setting.`
+        title: `${base} on Layered Hair with Soft Face-Framing`,
+        description: `${base} brings natural movement and clean dimension together for an elevated look. The styling works well with natural texture and requires minimal heat styling. Save this pin to your board for your next hair appointment or stylist visit.`,
+        altText: `Person with ${base} featuring soft natural movement, clean layers, and salon lighting.`
       };
     }
   }
@@ -1280,31 +1284,37 @@ Return ONLY raw JSON, no markdown, no code blocks:
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `You are an elite Pinterest SEO expert and strategist trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms across all categories. Write high-converting, search-optimized metadata for this pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
+    const isHairContext = visionJSON?.category === 'hair' || 
+                          visionJSON?.category === 'beauty' || 
+                          /hair|salon|barber|braid|cut|fade|bob|curl|color|blonde|brunette|balayage|updo/i.test(boardName || '') ||
+                          /hair|salon|barber|braid|cut|fade|bob|curl|color|blonde|brunette|balayage|updo/i.test(topic || '');
 
-BOARD: "${boardName || 'General Inspiration'}"
-TOPIC / NICHE: "${topic || ''}"
+    const seoPrompt = `You are an elite Pinterest SEO expert and strategist trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms${isHairContext ? ' specializing in the HAIRSTYLE NICHE' : ''}. Write high-converting, search-optimized metadata for this pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
+
+BOARD: "${boardName || 'Hairstyle Inspiration'}"
+TOPIC / NICHE: "${topic || (isHairContext ? 'Hairstyles & Hair Care' : '')}"
 ${truthSource}
 
-CRITICAL 2026 PINTEREST RANKING RULES:
+CRITICAL 2026 PINTEREST RANKING & BOARD RELEVANCE RULES:
 1. TITLE (45–80 characters):
+   - MANDATORY BOARD MATCH: The title MUST directly incorporate and match the BOARD NAME ("${boardName || 'Hairstyle'}") or its primary search keyword.
+   ${isHairContext ? '- For hairstyle pins: highlight the haircut name, hair texture (curls, waves, straight), length, or styling details (braids, bangs, layers, fade, bob, balayage, updo).' : '- Combine core subject + 2 specific visual modifiers.'}
    - Natural user search query written in clean Title Case.
    - Front-load primary search query in the first 30 characters (mobile grid truncation).
-   - Combine core subject + 2 specific visual modifiers (color, material, aesthetic style, cut, setting, or room type).
    - STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus signs (+).
    - NO clickbait words (Must-Have, Stunning, Viral, Obsession, Perfection).
 
 2. DESCRIPTION (240–360 characters):
    - Exactly 3 to 4 complete, well-formed sentences ending with a period.
-   - Sentence 1 starts directly with the topic or subject keyword.
+   - Sentence 1 starts directly with the board keyword or hairstyle topic.
    - FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
-   - Naturally weave 2 to 4 high-intent Pinterest search queries into conversational context.
-   - Final sentence MUST be a natural, soft call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
+   - Naturally weave 2 to 4 high-intent Pinterest search queries into conversational advice${isHairContext ? ' (hair care, styling tips, face shapes, volume, texture)' : ''}.
+   - Final sentence MUST be a soft call-to-action${isHairContext ? ' (e.g. "Save this pin for your next hair appointment or stylist visit.", "Pin this look to reference when styling your hair.")' : ' (e.g. "Save this pin to your board for your next project.", "Pin this idea to reference when planning your space.")'}.
    - STRICTLY ZERO hashtags (#), ZERO emojis.
 
 3. ALT TEXT (14–22 words):
    - Exactly one complete literal accessibility sentence describing what is physically visible.
-   - Describe subjects, colors, materials, lighting, and layout for Pinterest Lens and screen readers.
+   ${isHairContext ? '- Describe the hairstyle, hair color, length, texture, and setting for Pinterest Lens and screen readers.' : '- Describe subjects, colors, materials, lighting, and layout for Pinterest Lens and screen readers.'}
    - NO marketing copy, NO CTA, NO hashtags, NO URLs.
 
 Return ONLY this JSON:
