@@ -521,6 +521,18 @@ export class DbManager {
     await this.driver.run('DELETE FROM queue_jobs WHERE id = ?', [id]);
   }
 
+  public async clearQueue(): Promise<void> {
+    await this.driver.run("DELETE FROM queue_jobs WHERE status != 'running'");
+  }
+
+  public async clearCompletedJobs(): Promise<void> {
+    await this.driver.run("DELETE FROM queue_jobs WHERE status = 'completed'");
+  }
+
+  public async clearFailedJobs(): Promise<void> {
+    await this.driver.run("DELETE FROM queue_jobs WHERE status = 'failed'");
+  }
+
   // Repin Jobs
   public async getRepinJobs(): Promise<any[]> {
     return this.driver.query<any>('SELECT * FROM repin_jobs ORDER BY createdAt ASC');
@@ -557,10 +569,6 @@ export class DbManager {
 
   public async deleteRepinJob(id: string): Promise<void> {
     await this.driver.run('DELETE FROM repin_jobs WHERE id = ?', [id]);
-  }
-
-  public async clearQueue(): Promise<void> {
-    await this.driver.run("DELETE FROM queue_jobs WHERE status != 'running'");
   }
 
   // Settings

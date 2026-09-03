@@ -771,7 +771,7 @@ export const Queue: React.FC<QueueProps> = ({
     }
     if (confirm(`Remove ${completedJobs.length} completed job(s) from the queue?`)) {
       try {
-        await Promise.all(completedJobs.map(j => api.deleteQueueJob(j.id)));
+        await api.clearCompletedJobs();
         onShowToast(`Cleared ${completedJobs.length} completed job(s).`, 'success');
         await onRefreshQueue();
       } catch (e: any) { onShowToast(`Clear completed failed: ${e.message}`, 'error'); }
@@ -786,7 +786,7 @@ export const Queue: React.FC<QueueProps> = ({
     }
     if (confirm(`Remove ${failedList.length} failed job(s) from the queue?`)) {
       try {
-        await Promise.all(failedList.map(j => api.deleteQueueJob(j.id)));
+        await api.clearFailedJobs();
         onShowToast(`Cleared ${failedList.length} failed job(s).`, 'success');
         await onRefreshQueue();
       } catch (e: any) { onShowToast(`Clear failed jobs failed: ${e.message}`, 'error'); }

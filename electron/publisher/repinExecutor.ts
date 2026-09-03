@@ -316,7 +316,7 @@ export class RepinExecutor {
     } finally {
       if (page) await page.close().catch(() => {});
       if (context) await context.close().catch(() => {});
-      browserLockManager.releaseLock();
+      browserLockManager.releaseLock(job.accountId, 'Auto-Repin');
     }
   }
 }

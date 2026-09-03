@@ -808,6 +808,14 @@ function registerIpcHandlers() {
     return db.clearQueue();
   });
 
+  ipcMain.handle('db:clearCompletedJobs', async () => {
+    return db.clearCompletedJobs();
+  });
+
+  ipcMain.handle('db:clearFailedJobs', async () => {
+    return db.clearFailedJobs();
+  });
+
   ipcMain.handle('queue:start', async (_, jobIds: string[]) => {
     // Run queue in background sequential loop
     // Runs asynchronously on Electron main thread, reporting back to renderer window

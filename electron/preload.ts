@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateQueueJobStatus: (id: string, status: string, error?: string) => ipcRenderer.invoke('db:updateQueueJobStatus', id, status, error),
   deleteQueueJob: (id: string) => ipcRenderer.invoke('db:deleteQueueJob', id),
   clearQueue: () => ipcRenderer.invoke('db:clearQueue'),
+  clearCompletedJobs: () => ipcRenderer.invoke('db:clearCompletedJobs'),
+  clearFailedJobs: () => ipcRenderer.invoke('db:clearFailedJobs'),
   startQueueExecution: (jobIds: string[]) => ipcRenderer.invoke('queue:start', jobIds),
   pauseQueueExecution: () => ipcRenderer.invoke('queue:pause'),
   resumeQueueExecution: () => ipcRenderer.invoke('queue:resume'),

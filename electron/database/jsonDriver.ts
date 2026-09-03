@@ -385,10 +385,24 @@ export class JsonDriver implements DbDriver {
       return { lastID: null, changes: origLen - this.state.queue_jobs.length };
     }
 
-    if (lowerSql.startsWith("delete from queue_jobs where status !=")) {
+    if (lowerSql.startsWith("delete from queue_jobs where status !=") || lowerSql.trim() === 'delete from queue_jobs') {
       // delete from queue_jobs where status != 'running'
       const origLen = this.state.queue_jobs.length;
       this.state.queue_jobs = this.state.queue_jobs.filter(q => q.status === 'running');
+      this.saveState();
+      return { lastID: null, changes: origLen - this.state.queue_jobs.length };
+    }
+
+    if (lowerSql.includes("delete from queue_jobs where status = 'completed'")) {
+      const origLen = this.state.queue_jobs.length;
+      this.state.queue_jobs = this.state.queue_jobs.filter(q => q.status !== 'completed');
+      this.saveState();
+      return { lastID: null, changes: origLen - this.state.queue_jobs.length };
+    }
+
+    if (lowerSql.includes("delete from queue_jobs where status = 'failed'")) {
+      const origLen = this.state.queue_jobs.length;
+      this.state.queue_jobs = this.state.queue_jobs.filter(q => q.status !== 'failed');
       this.saveState();
       return { lastID: null, changes: origLen - this.state.queue_jobs.length };
     }

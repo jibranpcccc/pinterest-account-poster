@@ -34,6 +34,8 @@ declare global {
       updateQueueJobStatus: (id: string, status: string, error?: string) => Promise<void>;
       deleteQueueJob: (id: string) => Promise<void>;
       clearQueue: () => Promise<void>;
+      clearCompletedJobs: () => Promise<void>;
+      clearFailedJobs: () => Promise<void>;
       startQueueExecution: (jobIds: string[]) => Promise<boolean>;
       pauseQueueExecution: () => Promise<boolean>;
       resumeQueueExecution: () => Promise<boolean>;
@@ -443,6 +445,12 @@ const getApiMethod = (methodName: string) => {
       },
       clearQueue: async () => {
         mockStore.queue = mockStore.queue.filter(q => q.status === 'running');
+      },
+      clearCompletedJobs: async () => {
+        mockStore.queue = mockStore.queue.filter(q => q.status !== 'completed');
+      },
+      clearFailedJobs: async () => {
+        mockStore.queue = mockStore.queue.filter(q => q.status !== 'failed');
       },
       startQueueExecution: async (jobIds: string[]) => {
         // Trigger execution simulations

@@ -56,7 +56,7 @@ export class BoardResolver {
     } catch (err: any) {
       console.error(`Failed to launch board resolver with bundled Chromium: ${err.message}`);
       await this.db.addLog('error', `Failed to launch board scraper browser: ${err.message}`, { accountId: account.id });
-      browserLockManager.releaseLock();
+      browserLockManager.releaseLock(account.id, 'Fetch Boards');
       throw err;
     }
 
@@ -231,7 +231,7 @@ export class BoardResolver {
       if (context) {
         await context.close().catch(() => {});
       }
-      browserLockManager.releaseLock();
+      browserLockManager.releaseLock(account.id, 'Fetch Boards');
     }
   }
 }

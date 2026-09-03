@@ -1,4 +1,4 @@
-import { app, session, WebContents } from 'electron';
+import { app, session, WebContents, shell } from 'electron';
 
 export function setupSecurity() {
   // 1. Set Content Security Policy in HTTP headers or via session headers
@@ -35,11 +35,24 @@ export function setupSecurity() {
       
       console.warn(`🔒 Security: Blocked renderer navigation to: ${navigationUrl}`);
       navigationEvent.preventDefault();
+      // If user navigated to an external web page, open it in their real desktop browser
+      if (navigationUrl.startsWith('https://') || navigationUrl.startsWith('http://')) {
+        shell.openExternal(navigationUrl).catch((err) => {
+          console.error(`Failed to open external link: ${navigationUrl}`, err);
+        });
+      }
     });
 
-    // Disable new window creation from inside renderer
+    // Safely open external links in default desktop browser while keeping Electron renderer isolated
     contents.setWindowOpenHandler(({ url }) => {
-      console.warn(`🔒 Security: Blocked window open to: ${url}`);
+      if (url.startsWith('https://') || url.startsWith('http://')) {
+        console.log(`🌐 Opening external link in browser: ${url}`);
+        shell.openExternal(url).catch((err) => {
+          console.error(`Failed to open external URL: ${url}`, err);
+        });
+      } else {
+        console.warn(`🔒 Security: Blocked window open to non-web protocol: ${url}`);
+      }
       return { action: 'deny' };
     });
   });

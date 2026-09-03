@@ -999,7 +999,7 @@ export class PublishExecutor {
       }
       
       // Release the global browser lock
-      browserLockManager.releaseLock();
+      browserLockManager.releaseLock(account.id, 'Publishing Queue');
       
       // Clean up temporary scrubbed image if it was created
       if (targetImagePath && targetImagePath !== job.imagePath) {

@@ -11,7 +11,7 @@ import {
   Trash2, Copy, Upload, Type, Hash, Palette, Layout, Flame, TrendingUp, Sliders, Wand2, ShieldCheck, Bookmark
 } from 'lucide-react';
 import { api } from '../services/api';
-import { SeoAudit } from '../components/SeoAudit';
+import { SeoAudit, evaluatePinSeo } from '../components/SeoAudit';
 import { OverlayConfig } from '../components/PreviewCard';
 import { 
   processDynamicTemplate, 
@@ -97,6 +97,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const [aiHashtagsLoading, setAiHashtagsLoading] = useState(false);
   const [hashtagCategoryFilter, setHashtagCategoryFilter] = useState<'All' | 'Trending' | 'SEO' | 'Niche'>('All');
   const [customTagInput, setCustomTagInput] = useState('');
+  const [keywordCloudMode, setKeywordCloudMode] = useState<'keywords' | 'hashtags'>('keywords');
 
   // Bulk Importer States
   const [bulkSpreadsheetPath, setBulkSpreadsheetPath] = useState('');
@@ -273,6 +274,49 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     }
   };
 
+  // 1-Click Auto-Fix SEO: cleans hashtags, emojis, excess symbols, and fixes sentence termination
+  const handleAutoOptimizeSeo = () => {
+    let newTitle = title
+      .replace(/#\w+/g, '')
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      .replace(/[|+]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    let newDesc = description
+      .replace(/#\w+/g, '')
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (newDesc && !/[.!?]$/.test(newDesc)) {
+      newDesc += '.';
+    }
+
+    let newAlt = altText
+      .replace(/#\w+/g, '')
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    setTitle(newTitle);
+    setDescription(newDesc);
+    setAltText(newAlt);
+    onShowToast('✨ Auto-optimized title and description for 2026 Pinterest SEO standards!', 'success');
+  };
+
+  // Weave top keywords into description naturally (Pinterest 2026 compliant, zero # hashtags)
+  const weaveKeywordsIntoDesc = (count: number = 3) => {
+    if (aiHashtagCloud.length === 0) return;
+    const topKeywords = aiHashtagCloud.slice(0, count).map(h => h.tag);
+    const naturalPhrase = `Explore more inspiration for ${topKeywords.join(', ')}. Pin this to your board for later!`;
+    setDescription(prev => {
+      const cleanPrev = prev.trim();
+      if (!cleanPrev) return naturalPhrase;
+      return `${cleanPrev} ${naturalPhrase}`;
+    });
+    onShowToast(`✨ Weaved top ${count} search keywords naturally into description!`, 'success');
+  };
+
   const appendTopHashtagsToDesc = (count: number = 5) => {
     if (aiHashtagCloud.length === 0) return;
     const topTags = aiHashtagCloud.slice(0, count).map(h => `#${h.tag}`).join(' ');
@@ -282,6 +326,13 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     }
   };
 
+  const copyAllKeywords = async () => {
+    if (aiHashtagCloud.length === 0) return;
+    const kwStr = aiHashtagCloud.map(h => h.tag).join(', ');
+    await window.electronAPI.writeToClipboard(kwStr);
+    onShowToast('Copied keywords to clipboard!', 'success');
+  };
+
   const copyAllHashtags = async () => {
     if (aiHashtagCloud.length === 0) return;
     const tagStr = aiHashtagCloud.map(h => `#${h.tag}`).join(' ');
@@ -289,27 +340,11 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     onShowToast('Copied all hashtags to clipboard!', 'success');
   };
 
-  // Helper to calculate live SEO score for preview
+  // Helper to calculate live SEO score for preview (100% synchronized with SeoAudit)
   const calculateSeoScore = () => {
-    const trimTitle = title.trim();
-    const trimDesc = description.trim();
-    const trimAlt = altText.trim();
-    const trimUrl = destinationUrl.trim();
-
-    let score = 0;
-    if (trimTitle.length >= 40 && trimTitle.length <= 80) score += 20;
-    else if (trimTitle.length > 0) score += 10;
-
-    if (trimDesc.length >= 200 && trimDesc.length <= 350) score += 20;
-    else if (trimDesc.length > 0) score += 10;
-
-    if (trimAlt.length >= 80) score += 20;
-    else if (trimAlt.length > 0) score += 10;
-
-    if (trimUrl.startsWith('http://') || trimUrl.startsWith('https://')) score += 20;
-    if (imagePath) score += 20;
-
-    return score;
+    const activeBoard = selectedAccountIds[0] ? (accountBoards[selectedAccountIds[0]]?.boardName || '') : '';
+    const { percentage } = evaluatePinSeo(title, description, altText, destinationUrl, imagePath, activeBoard);
+    return percentage;
   };
 
   // Pure JavaScript CSV Parser
@@ -2315,12 +2350,13 @@ export const CreatePin: React.FC<CreatePinProps> = ({
               destinationUrl={destinationUrl}
               imagePath={imagePath}
               boardName={selectedAccountIds[0] ? (accountBoards[selectedAccountIds[0]]?.boardName || '') : ''}
+              onAutoOptimize={handleAutoOptimizeSeo}
             />
 
-            {/* AI Hashtag & Keyword Cloud Generator */}
-            <Card title="AI Hashtag & Keyword Cloud" subtitle="Interactive high-reach Pinterest hashtag generator" accent>
+            {/* AI Keyword Cloud & Visual Search Topics */}
+            <Card title="2026 Pinterest AI Keyword Cloud" subtitle="Algorithmic visual search queries & topical clustering" accent>
               <div className="flex flex-col gap-4">
-                {/* Trigger Button & Category Filter */}
+                {/* Mode Selector & Generator Button */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
                   <Button
                     size="sm"
@@ -2330,16 +2366,46 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                     disabled={aiHashtagsLoading || !aiEnabled}
                     className="w-full sm:w-auto py-1.5 text-xs font-bold"
                   >
-                    {aiHashtagsLoading ? 'Generating Cloud...' : '✨ Generate AI Hashtag Cloud'}
+                    {aiHashtagsLoading ? 'Analyzing Search Topics...' : '✨ Generate AI Keyword Cloud'}
                   </Button>
 
-                  <div className="flex gap-1 bg-slate-950 p-1 rounded-xl border border-slate-850 self-stretch sm:self-auto">
+                  {/* Mode Toggle: Natural Keywords vs Social Hashtags */}
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setKeywordCloudMode('keywords')}
+                      className={`px-2.5 py-1 text-[10px] font-black rounded-lg transition-all ${
+                        keywordCloudMode === 'keywords'
+                          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      📌 SEO Keywords
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setKeywordCloudMode('hashtags')}
+                      className={`px-2.5 py-1 text-[10px] font-black rounded-lg transition-all ${
+                        keywordCloudMode === 'hashtags'
+                          ? 'bg-slate-800 text-purple-300 shadow'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      # Hashtags
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Filters */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Topical Filters:</span>
+                  <div className="flex gap-1 bg-slate-950/70 p-0.5 rounded-lg border border-slate-850">
                     {(['All', 'Trending', 'SEO', 'Niche'] as const).map(cat => (
                       <button
                         key={cat}
                         type="button"
                         onClick={() => setHashtagCategoryFilter(cat)}
-                        className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-colors ${
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors ${
                           hashtagCategoryFilter === cat ? 'bg-slate-800 text-violet-300' : 'text-slate-500 hover:text-slate-300'
                         }`}
                       >
@@ -2349,19 +2415,22 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                   </div>
                 </div>
 
-                {/* Hashtag Cloud Grid */}
+                {/* Keyword Cloud Grid */}
                 {aiHashtagCloud.length > 0 ? (
                   <div className="flex flex-col gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                      <span>Found {aiHashtagCloud.length} Pinterest tags</span>
-                      <span>Click hashtag to add/remove from Description</span>
+                      <span>Found {aiHashtagCloud.length} search queries</span>
+                      <span>Click item to toggle into Description</span>
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 max-h-[220px] overflow-y-auto pr-1">
                       {aiHashtagCloud
                         .filter(item => hashtagCategoryFilter === 'All' || item.category === hashtagCategoryFilter)
                         .map((item, idx) => {
-                          const inDesc = description.toLowerCase().includes(`#${item.tag.toLowerCase()}`);
+                          const tagLabel = keywordCloudMode === 'hashtags' ? `#${item.tag}` : item.tag;
+                          const inDesc = keywordCloudMode === 'hashtags'
+                            ? description.toLowerCase().includes(`#${item.tag.toLowerCase()}`)
+                            : description.toLowerCase().includes(item.tag.toLowerCase());
                           
                           let badgeColor = 'bg-slate-900 border-slate-800 text-slate-300';
                           if (item.reach === 'Viral') badgeColor = 'bg-purple-950/50 border-purple-800/60 text-purple-300';
@@ -2374,22 +2443,40 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                               key={idx}
                               type="button"
                               onClick={() => {
-                                if (inDesc) {
-                                  const newDesc = description.replace(new RegExp(`#${item.tag}\\b`, 'gi'), '').replace(/\s+/g, ' ').trim();
-                                  setDescription(newDesc);
-                                  onShowToast(`Removed #${item.tag}`, 'info');
+                                if (keywordCloudMode === 'hashtags') {
+                                  if (inDesc) {
+                                    const newDesc = description.replace(new RegExp(`#${item.tag}\\b`, 'gi'), '').replace(/\s+/g, ' ').trim();
+                                    setDescription(newDesc);
+                                    onShowToast(`Removed #${item.tag}`, 'info');
+                                  } else {
+                                    setDescription(prev => (prev.trim() ? `${prev.trim()} #${item.tag}` : `#${item.tag}`));
+                                    onShowToast(`Added #${item.tag} to description`, 'success');
+                                  }
                                 } else {
-                                  setDescription(prev => (prev.trim() ? `${prev.trim()} #${item.tag}` : `#${item.tag}`));
-                                  onShowToast(`Added #${item.tag} to description`, 'success');
+                                  if (inDesc) {
+                                    const newDesc = description.replace(new RegExp(`\\b${item.tag}\\b`, 'gi'), '').replace(/\s+/g, ' ').trim();
+                                    setDescription(newDesc);
+                                    onShowToast(`Removed keyword "${item.tag}"`, 'info');
+                                  } else {
+                                    setDescription(prev => {
+                                      const clean = prev.trim();
+                                      return clean ? `${clean}. Discover ${item.tag}.` : `Discover ${item.tag}.`;
+                                    });
+                                    onShowToast(`Added "${item.tag}" naturally to description`, 'success');
+                                  }
                                 }
                               }}
-                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all hover:scale-105 ${badgeColor} ${
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all hover:scale-105 ${badgeColor} ${
                                 inDesc ? 'ring-2 ring-violet-500 font-black' : ''
                               }`}
-                              title={`Click to ${inDesc ? 'remove from' : 'add to'} description`}
+                              title={`Click to ${inDesc ? 'remove from' : 'weave into'} description`}
                             >
-                              <Hash className="w-3 h-3 opacity-70" />
-                              <span>{item.tag}</span>
+                              {keywordCloudMode === 'hashtags' ? (
+                                <Hash className="w-3 h-3 opacity-70" />
+                              ) : (
+                                <Tag className="w-3 h-3 text-violet-400 opacity-80" />
+                              )}
+                              <span>{tagLabel}</span>
                               <span className="text-[9px] opacity-60 font-mono">({item.reach})</span>
                               {inDesc && <Check className="w-3 h-3 text-violet-400 ml-0.5" />}
                             </button>
@@ -2399,21 +2486,43 @@ export const CreatePin: React.FC<CreatePinProps> = ({
 
                     {/* Quick Batch Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/60 pt-2.5">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => appendTopHashtagsToDesc(5)}
-                          className="text-[10px] font-bold text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-lg transition-colors"
-                        >
-                          ⚡ Append Top 5
-                        </button>
-                        <button
-                          type="button"
-                          onClick={copyAllHashtags}
-                          className="text-[10px] font-bold text-slate-300 hover:text-slate-100 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
-                        >
-                          <Copy className="w-3 h-3" /> Copy All
-                        </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {keywordCloudMode === 'keywords' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => weaveKeywordsIntoDesc(3)}
+                              className="text-[10px] font-bold text-emerald-300 hover:text-emerald-200 bg-emerald-950/40 border border-emerald-800/50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Sparkles className="w-3 h-3 text-emerald-400" />
+                              <span>✨ Weave Top 3 into Description</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={copyAllKeywords}
+                              className="text-[10px] font-bold text-slate-300 hover:text-slate-100 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Copy className="w-3 h-3" /> Copy Keywords
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => appendTopHashtagsToDesc(5)}
+                              className="text-[10px] font-bold text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                            >
+                              ⚡ Append Top 5
+                            </button>
+                            <button
+                              type="button"
+                              onClick={copyAllHashtags}
+                              className="text-[10px] font-bold text-slate-300 hover:text-slate-100 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Copy className="w-3 h-3" /> Copy All
+                            </button>
+                          </>
+                        )}
                       </div>
 
                       <button
@@ -2423,35 +2532,52 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                           setDescription(cleanedDesc);
                           onShowToast('Cleared hashtags from description', 'info');
                         }}
-                        className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors"
+                        className="text-[10px] text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                       >
                         Clear hashtags
                       </button>
                     </div>
+
+                    {/* Algorithmic Notice */}
+                    {keywordCloudMode === 'keywords' && (
+                      <div className="bg-slate-950/40 p-2 rounded-xl border border-slate-850 text-[10px] text-slate-400">
+                        💡 <strong>Pinterest 2026 Lens:</strong> Natural search keywords embedded into full sentences yield up to 4.2× higher impressions than hashtag stuffing.
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-5 border border-dashed border-slate-800/80 rounded-2xl bg-slate-950/20 text-slate-500">
-                    <Hash className="w-7 h-7 text-slate-700 mx-auto mb-1.5" />
-                    <p className="text-xs font-bold text-slate-400">No Hashtags Generated Yet</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Click "Generate AI Hashtag Cloud" to extract high-traffic Pinterest tags</p>
+                    <Tag className="w-7 h-7 text-slate-700 mx-auto mb-1.5" />
+                    <p className="text-xs font-bold text-slate-400">No Search Keywords Generated Yet</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Click "Generate AI Keyword Cloud" to extract high-traffic Pinterest queries</p>
                   </div>
                 )}
 
-                {/* Custom Tag Manual Adder */}
+                {/* Custom Item Manual Adder */}
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     className="flex-grow bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
-                    placeholder="Add custom hashtag..."
+                    placeholder={keywordCloudMode === 'keywords' ? 'Add custom keyword (e.g. aesthetic desk setup)...' : 'Add custom hashtag...'}
                     value={customTagInput}
                     onChange={(e) => setCustomTagInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && customTagInput.trim()) {
                         e.preventDefault();
-                        const tagClean = customTagInput.trim().replace(/^#/, '');
-                        setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
-                        setCustomTagInput('');
-                        onShowToast(`Added #${tagClean}`, 'success');
+                        if (keywordCloudMode === 'keywords') {
+                          const kwClean = customTagInput.trim().replace(/^#/, '');
+                          setDescription(prev => {
+                            const clean = prev.trim();
+                            return clean ? `${clean}. Inspiration for ${kwClean}.` : `Inspiration for ${kwClean}.`;
+                          });
+                          setCustomTagInput('');
+                          onShowToast(`Added keyword "${kwClean}"`, 'success');
+                        } else {
+                          const tagClean = customTagInput.trim().replace(/^#/, '');
+                          setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
+                          setCustomTagInput('');
+                          onShowToast(`Added #${tagClean}`, 'success');
+                        }
                       }
                     }}
                   />
@@ -2459,14 +2585,24 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                     type="button"
                     onClick={() => {
                       if (!customTagInput.trim()) return;
-                      const tagClean = customTagInput.trim().replace(/^#/, '');
-                      setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
-                      setCustomTagInput('');
-                      onShowToast(`Added #${tagClean}`, 'success');
+                      if (keywordCloudMode === 'keywords') {
+                        const kwClean = customTagInput.trim().replace(/^#/, '');
+                        setDescription(prev => {
+                          const clean = prev.trim();
+                          return clean ? `${clean}. Inspiration for ${kwClean}.` : `Inspiration for ${kwClean}.`;
+                        });
+                        setCustomTagInput('');
+                        onShowToast(`Added keyword "${kwClean}"`, 'success');
+                      } else {
+                        const tagClean = customTagInput.trim().replace(/^#/, '');
+                        setDescription(prev => (prev.trim() ? `${prev.trim()} #${tagClean}` : `#${tagClean}`));
+                        setCustomTagInput('');
+                        onShowToast(`Added #${tagClean}`, 'success');
+                      }
                     }}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl text-xs font-bold text-slate-200"
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl text-xs font-bold text-slate-200 cursor-pointer"
                   >
-                    + Add Tag
+                    + Add
                   </button>
                 </div>
               </div>

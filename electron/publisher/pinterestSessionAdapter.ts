@@ -109,7 +109,7 @@ export class PinterestSessionAdapter {
             });
           }
 
-          browserLockManager.releaseLock();
+          browserLockManager.releaseLock(account.id, 'Manual Login');
           resolve(isConnected);
         });
       });
@@ -119,7 +119,7 @@ export class PinterestSessionAdapter {
       if (onBrowserStatusChange) {
         onBrowserStatusChange({ accountId: account.id, isOpen: false, message: `Failed to open: ${e.message}` });
       }
-      browserLockManager.releaseLock();
+      browserLockManager.releaseLock(account.id, 'Manual Login');
       return false;
     }
   }
