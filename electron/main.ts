@@ -923,6 +923,23 @@ function registerIpcHandlers() {
     await shell.openPath(localDataDir);
   });
 
+  ipcMain.handle('sys:saveTempImage', async (_, base64Data: string, prefix: string = 'pin_canvas') => {
+    try {
+      const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const tempDir = path.join(localDataDir, 'temp_canvas');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      const outPath = path.join(tempDir, `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+      fs.writeFileSync(outPath, buffer);
+      return outPath;
+    } catch (e: any) {
+      console.error('Failed to save temp canvas image:', e);
+      throw e;
+    }
+  });
+
   ipcMain.handle('sys:setStartup', async (_, enabled: boolean) => {
     try {
       app.setLoginItemSettings({

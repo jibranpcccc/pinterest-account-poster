@@ -13,6 +13,7 @@ import {
 import { api } from '../services/api';
 import { SeoAudit, evaluatePinSeo } from '../components/SeoAudit';
 import { OverlayConfig } from '../components/PreviewCard';
+import { renderBannerOverlayToCanvas } from '../utils/canvasRenderer';
 import { 
   processDynamicTemplate, 
   calculateSpintaxVariations, 
@@ -604,18 +605,47 @@ export const CreatePin: React.FC<CreatePinProps> = ({
     }
   };
 
+  // Helper to bake canvas banner overlay onto image if enabled
+  const getPreparedImagePath = async (): Promise<string> => {
+    if (!imagePath) return '';
+    if (!overlayEnabled || !overlayText.trim()) return imagePath;
+
+    try {
+      onShowToast('🎨 Baking typography overlay banner onto pin image...', 'info');
+      const dataUrl = await renderBannerOverlayToCanvas(imagePath, {
+        text: overlayText,
+        position: overlayPosition,
+        preset: overlayPreset,
+        bgColor: overlayBgColor,
+        textColor: overlayTextColor,
+        fontSize: overlayFontSize,
+        fontFamily: overlayFontFamily,
+        opacity: overlayOpacity
+      });
+
+      if (dataUrl && dataUrl.startsWith('data:image')) {
+        const savedPath = await api.saveTempImage(dataUrl, 'pin_overlay');
+        return savedPath || imagePath;
+      }
+    } catch (e) {
+      console.error('Failed to bake canvas overlay:', e);
+    }
+    return imagePath;
+  };
+
   // Queue Pin Action (Single Mode)
   const handleAddToQueue = async () => {
     if (!validateForm()) return;
 
     try {
+      const targetImg = await getPreparedImagePath();
       for (const accId of selectedAccountIds) {
         const boardMapping = accountBoards[accId];
         await onAddQueueJob({
           accountId: accId,
           boardName: boardMapping.boardName,
           boardUrl: boardMapping.boardUrl,
-          imagePath,
+          imagePath: targetImg,
           title,
           description,
           destinationUrl,
@@ -642,6 +672,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
   const executeDirectPublish = async () => {
     setIsPublishConfirmOpen(false);
     try {
+      const targetImg = await getPreparedImagePath();
       const addedJobIds: string[] = [];
       for (const accId of selectedAccountIds) {
         const boardMapping = accountBoards[accId];
@@ -649,7 +680,7 @@ export const CreatePin: React.FC<CreatePinProps> = ({
           accountId: accId,
           boardName: boardMapping.boardName,
           boardUrl: boardMapping.boardUrl,
-          imagePath,
+          imagePath: targetImg,
           title,
           description,
           destinationUrl,
@@ -2096,6 +2127,33 @@ export const CreatePin: React.FC<CreatePinProps> = ({
                     </select>
                   </div>
                 </div>
+
+                {/* 1-Click Bake Overlay Action */}
+                {overlayEnabled && overlayText.trim() && imagePath && (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/70 border border-slate-800 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-violet-400" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-200">Bake Banner onto Image File</p>
+                        <p className="text-[10px] text-slate-400">Permanently burn typography onto image before saving or publishing</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const baked = await getPreparedImagePath();
+                        if (baked && baked !== imagePath) {
+                          setImagePath(baked);
+                          setOverlayEnabled(false);
+                          onShowToast('🎉 Successfully baked banner onto pin image!', 'success');
+                        }
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-black bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-lg hover:scale-105 transition-all cursor-pointer"
+                    >
+                      🎨 Bake Now
+                    </button>
+                  </div>
+                )}
               </div>
             </Card>
 

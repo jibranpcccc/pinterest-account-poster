@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportBackup: () => ipcRenderer.invoke('sys:exportBackup'),
   importBackup: () => ipcRenderer.invoke('sys:importBackup'),
   writeToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
+  saveTempImage: (base64Data: string, prefix?: string) => ipcRenderer.invoke('sys:saveTempImage', base64Data, prefix),
   setStartup: (enabled: boolean) => ipcRenderer.invoke('sys:setStartup', enabled),
   getStartup: () => ipcRenderer.invoke('sys:getStartup'),
 

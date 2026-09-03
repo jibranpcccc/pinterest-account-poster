@@ -52,6 +52,7 @@ declare global {
       setStartup: (enabled: boolean) => Promise<void>;
       getStartup: () => Promise<{ openAtLogin: boolean; wasOpenedAtLogin: boolean }>;
       writeToClipboard: (text: string) => Promise<void>;
+      saveTempImage: (base64Data: string, prefix?: string) => Promise<string>;
       aiDiagnose: () => Promise<any>;
       toggleFleet: (enabled: boolean) => Promise<boolean>;
       getFleetStatus: () => Promise<boolean>;
@@ -501,6 +502,9 @@ const getApiMethod = (methodName: string) => {
         } catch (e) {
           console.error('Mock clipboard write failed', e);
         }
+      },
+      saveTempImage: async (base64Data: string, prefix: string = 'pin_canvas') => {
+        return base64Data;
       },
       aiDiagnose: async () => {
         return {
