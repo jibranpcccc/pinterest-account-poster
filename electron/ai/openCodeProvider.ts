@@ -194,10 +194,10 @@ function auditSEOOutput(
 
   // ─ 6. Prompt accuracy ─
   if (imagePrompt && imagePrompt.length > 10) {
-    const promptKeywords = imagePrompt.toLowerCase().match(/\b(curly|wavy|straight|braids?|cornrow|freehand|natural|loc|twist|afro|blonde|brunette|dark|short|long|medium|pixie|bob|bangs|layers?|protective|crochet|zigzag|wolf cut|shag)\b/g) || [];
+    const promptKeywords = imagePrompt.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !['photo', 'image', 'background', 'features', 'with', 'aesthetic'].includes(w));
     const matchedPromptWords = promptKeywords.filter(k => tl.includes(k) || dl.includes(k));
     if (promptKeywords.length > 0 && matchedPromptWords.length === 0) {
-      issues.push('Output does not reflect key terms from the generation prompt'); score -= 25;
+      issues.push('Output does not reflect key terms from the generation prompt'); score -= 20;
     }
   }
 
@@ -312,15 +312,27 @@ function buildVisualHairDetail(visionJSON: any): string {
 //   return '#' + words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
 // }
 
-/** Clean known AI noise from title/description */
+/** Clean known AI noise from title/description and auto-sanitize banned buzzwords */
 function cleanText(text: string): string {
-  return text
+  let cleaned = text
     .replace(/\bhair styling hair\b/gi, 'hair')
     .replace(/\bhairstyle hair\b/gi, 'hair')
     .replace(/\bhair hair\b/gi, 'hair')
     .replace(/\s*\+\s*/g, ', ')
+    .replace(/\s*\|\s*/g, ' - ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // Auto-sanitize banned buzzwords into natural Pinterest phrasing
+  cleaned = cleaned
+    .replace(/\b(stunning|amazing|incredible)\b/gi, 'distinctive')
+    .replace(/\b(perfect)\b/gi, 'ideal')
+    .replace(/\b(viral|trending)\b/gi, 'popular')
+    .replace(/\b(obsession|must-have)\b/gi, 'essential')
+    .replace(/\b(perfection)\b/gi, 'elegance')
+    .replace(/\b(hair goals|goals)\b/gi, 'inspiration');
+
+  return cleaned;
 }
 
 /** Validate a title — returns null if OK, error string if bad */
@@ -355,9 +367,11 @@ function validateDescription(description: string, visionJSON: any): string | nul
   const dup = /\b([a-z]+)\s+\1\b/i.exec(d);
   if (dup) return `Description contains consecutive duplicate word: "${dup[0]}"`;
 
-  const hasLayerClaims = /\blayers?\b|face-framing layers|lightweight layer/i.test(d);
-  if (hasLayerClaims && visionJSON?.layersVisible === false && (visionJSON?.confidence || 0) > 0.5) {
-    return 'Description claims layers but visionJSON.layersVisible is false';
+  if (visionJSON?.category === 'hair') {
+    const hasHairLayerClaims = /face-framing layers|lightweight hair layer/i.test(d);
+    if (hasHairLayerClaims && visionJSON?.layersVisible === false && (visionJSON?.confidence || 0) > 0.5) {
+      return 'Description claims hair layers but visionJSON.layersVisible is false';
+    }
   }
 
   return null;
@@ -406,6 +420,18 @@ function buildSmartFallback(
   const hairStyle     = cleanHairPhrase(visionJSON?.visibleHairStyle || '');
   const color         = cleanHairPhrase(visionJSON?.hairColor || '');
   const length        = cleanHairPhrase(visionJSON?.hairLength || '');
+
+  const isNonHair = visionJSON?.category && visionJSON.category !== 'hair' && visionJSON.category !== 'beauty';
+  if (isNonHair) {
+    const subject = visionJSON?.primarySubject || bd;
+    const colors = visionJSON?.colorPalette || 'neutral tones';
+    const style = visionJSON?.aestheticStyle || 'modern';
+    return {
+      title: `${bd} Design Ideas with ${style} Aesthetic and Clean Details`,
+      description: `${subject} showcases a ${style} aesthetic with balanced proportions and ${colors}. Thoughtful textures and natural lighting bring this curated concept together. Save this pin to your board for your next project or styling inspiration.`,
+      altText: `${subject} featuring ${colors} and ${style} styling in a well-lit setting.`
+    };
+  }
 
   const isProtective  = visionJSON?.protectiveStyleVisible === true || /braid|twist|locs|loc/.test(hairStyle);
   const isWolfCut     = /wolf cut|wolf/.test(hairStyle);
@@ -582,21 +608,16 @@ Return ONLY a valid JSON array of strings, e.g. ["query one", "query two", "quer
   }
 
   public async generateTitleSuggestions(input: AIInput): Promise<string[]> {
-    const system = `You are a Pinterest SEO copywriter for the hairstyle niche.
-Generate 5 unique pin titles.
+    const system = `You are an elite Pinterest SEO strategist specializing in 2026 visual search algorithms across all categories (Home Decor, Beauty & Hair, Fashion, Food & Recipes, Lifestyle, Architecture, DIY, and Products).
+Generate 5 unique, high-ranking Pin titles.
 
-RULES:
-1. Titles must be 45–85 characters.
-2. No emoji.
-3. No hashtags.
-4. No pipe symbols.
-5. No clickbait.
-6. No spam words like stunning, amazing, perfect, viral, trending, obsession, must-have, or hair goals.
-7. Use the board keyword or a natural variation when relevant.
-8. Include the hairstyle name clearly.
-9. Make titles natural, searchable, and human-written.
-10. Use clean title case.
-11. Vary title structures across the 5 options.
+STRICT 2026 PINTEREST TITLE RULES:
+1. 45–80 characters in clean Title Case.
+2. Front-load primary search query in the first 30 characters (for mobile card truncation).
+3. Include the core topic/subject + 2 specific visual modifiers.
+4. STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus (+).
+5. NO clickbait buzzwords (Must-Have, Stunning, Viral, Obsession, Perfection).
+6. Natural, human-written, search-intent driven phrasing.
 
 OUTPUT FORMAT:
 Return ONLY a raw JSON array of 5 strings.`;
@@ -611,33 +632,30 @@ Return ONLY a raw JSON array of 5 strings.`;
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate titles via AI:', e);
-      const keyword = input.keyword || input.topic || input.boardName || 'layered hair';
+      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
       return [
-        `${keyword} On Dark Wavy Hair That Frames The Face`,
-        `How To Style A ${keyword} Haircut`,
-        `${keyword} Hairstyle For Round Faces And Fine Hair`,
-        `${keyword} Cut With Soft Face-Framing Layers`,
-        `${keyword} For Thick Hair That Adds Natural Volume`
+        `${base} Ideas for a Balanced and Clean Aesthetic`,
+        `How To Style ${base} with Natural Textures and Warm Accents`,
+        `${base} Inspiration Guide for Modern Spaces and Looks`,
+        `Effortless ${base} Concepts with Timeless Elegance`,
+        `${base} Showcase with Neutral Tones and Refined Detailing`
       ];
     }
   }
 
   public async generateDescriptionSuggestions(input: AIInput): Promise<string[]> {
-    const system = `You are a Pinterest SEO copywriter for the hairstyle niche.
-Generate 3 unique pin descriptions.
+    const system = `You are an elite Pinterest SEO copywriter specializing in 2026 visual search and organic discovery across all niches.
+Generate 3 unique Pin descriptions.
 
-RULES:
-1. Each description must be 220–380 characters.
-2. No emoji.
-3. No hashtags.
-4. Do not start every description with the same word.
-5. Never start with Discover, Achieve, Check out, Looking for, or Get inspired.
-6. Use 2–4 relevant SEO terms naturally.
-7. Describe only what is clearly shown or stated.
-8. Do not invent accessories, extensions, beads, cuffs, wigs, or products unless explicitly provided.
-9. End with a soft CTA.
-10. Every description must end with a complete sentence.
-11. Avoid spam words like stunning, amazing, perfect, viral, trending, obsession, must-have, or hair goals.
+STRICT 2026 PINTEREST DESCRIPTION RULES:
+1. 240–360 characters total.
+2. Exactly 3 to 4 complete, grammatical sentences ending with terminal punctuation.
+3. Sentence 1 starts directly with the topic or subject keyword.
+4. FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
+5. Weave 2–4 high-intent Pinterest search queries naturally into conversational context.
+6. Last sentence MUST be a soft, actionable call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
+7. STRICTLY ZERO hashtags (#), ZERO emojis.
+8. NO spam buzzwords (stunning, viral, must-have, perfection).
 
 OUTPUT FORMAT:
 Return ONLY a raw JSON array of 3 strings.`;
@@ -652,32 +670,27 @@ Return ONLY a raw JSON array of 3 strings.`;
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate descriptions via AI:', e);
-      const kw = input.keyword || input.topic || input.boardName || 'layered hair';
-      // const board = input.boardName || 'hair styling';
+      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
       return [
-        `${kw} creates soft movement and dimension that works on many face shapes. The stylist used face-framing pieces with lightweight ends for texture. Save this pin for your next hairstyle idea.`,
-        `${kw} gives a clean finish that suits various face shapes. The cut includes soft shaping through the mid-lengths and shorter pieces around the face. Pin this look for your next hair appointment.`,
-        `${kw} works well with natural texture and requires minimal heat styling. The length is kept balanced around the shoulders for a practical finish. Tap the link for more hairstyle ideas.`
+        `${base} brings natural balance and clean lines together for an elevated look. Incorporating thoughtful details and neutral textures creates an inviting and enduring feel. Save this pin to your board for your next project or aesthetic inspiration.`,
+        `${base} provides an effortless blend of functionality and refined style for modern living. The subtle composition and warm tones work well in any contemporary setting. Pin this look to reference when planning your upcoming space or routine.`,
+        `${base} highlights timeless craftsmanship and curated elements with minimal fuss. Focus on balanced proportions and organic accents to achieve this seamless aesthetic. Save this pin for easy reference on your ideas board.`
       ];
     }
   }
 
   public async improveAltText(input: AIInput): Promise<string> {
-    const system = `You are an accessibility and Pinterest SEO specialist.
-Write one concise alt text.
+    const system = `You are an accessibility and Pinterest Lens SEO specialist.
+Write one concise, literal visual accessibility description of the image.
 
-RULES:
-1. Alt text must be 12–22 words.
-2. Describe the visible hairstyle simply and accurately.
-3. Include the main hairstyle keyword once if natural.
-4. No CTA.
-5. No promotional language.
-6. No hashtags.
-7. No emoji.
-8. Do not invent details not clearly shown or stated.
+STRICT RULES:
+1. 14–22 words total.
+2. Accurately describe what is physically visible: subject, colors, textures, lighting, and layout.
+3. Include primary subject keyword once naturally.
+4. STRICTLY NO marketing copy, NO CTA, NO hashtags, NO emojis, NO URLs.
 
 OUTPUT FORMAT:
-Return ONLY the plain alt text.`;
+Return ONLY the plain alt text string.`;
 
     const user = this.buildContext(input);
 
@@ -686,20 +699,19 @@ Return ONLY the plain alt text.`;
       return result.trim().replace(/^["']|["']$/g, '');
     } catch (e) {
       console.error('Failed to improve alt text via AI:', e);
-      return `${input.topic || input.boardName || 'Layered'} hair with natural movement, soft indoor lighting`;
+      const base = input.keyword || input.topic || input.boardName || 'Curated design';
+      return `${base} with natural light, clean textures, and balanced neutral tones in an elegant setting.`;
     }
   }
 
   public async generateKeywords(input: AIInput): Promise<string[]> {
-    const system = `You are a Pinterest keyword research expert for the hair styling niche. Generate 15 relevant Pinterest search keywords.
+    const system = `You are an elite Pinterest keyword research expert trained on 2026 search trends across all categories. Generate 15 high-intent Pinterest search queries for the provided niche, board, or topic.
 
 RULES:
-1. Mix of SHORT-TAIL, MID-TAIL, and LONG-TAIL keywords.
-2. Include board niche keywords.
-3. Include action-intent keywords (how to, step by step).
-4. Include audience-specific variations (for fine hair, for round faces, over 50).
-5. All keywords must be hair-specific.
-6. Return ONLY a raw JSON array of strings. No markdown, no labels.`;
+1. Mix of short-tail, mid-tail, and long-tail search phrases.
+2. Reflect actual Pinterest user search intent (ideas, aesthetic, tutorial, how to, inspiration, modern, minimal, layout, styling).
+3. STRICTLY NO hashtags (#). All terms must be plain text search queries.
+4. Return ONLY a raw JSON array of 15 strings.`;
 
     const user = this.buildContext(input);
 
@@ -711,12 +723,12 @@ RULES:
       return [cleaned];
     } catch (e) {
       console.error('Failed to generate keywords via AI:', e);
-      const base = input.keyword || input.topic || input.boardName || 'layered hair';
+      const base = input.keyword || input.topic || input.boardName || 'interior design';
       return [
-        base, `${base} ideas`, `${base} tutorial`, `${base} for fine hair`,
-        `${base} for round face`, `how to style ${base}`, `${base} over 50`,
-        `${base} for thick hair`, `${base} face framing`, `${base} short`,
-        `${base} long`, `${base} salon cut`, `${base} technique`, `${base} 2026`, `${base} inspo`
+        base, `${base} ideas`, `${base} aesthetic`, `${base} inspiration`,
+        `${base} styling`, `how to style ${base}`, `modern ${base}`,
+        `minimalist ${base}`, `${base} layout`, `${base} neutral tones`,
+        `${base} for beginners`, `${base} trends 2026`, `${base} cozy`, `${base} tips`, `${base} decor`
       ];
     }
   }
@@ -725,7 +737,7 @@ RULES:
     const system = `You are a Pinterest SEO auditor. Analyze this pin's metadata and identify specific issues.
 
 CHECK ALL:
-1. TITLE: 45–85 chars, no emoji, no pipe symbols, no banned spam words, natural keyword usage.
+1. TITLE: 45–80 chars, no emoji, no pipe symbols, no banned spam words, natural keyword usage.
 2. DESCRIPTION: 220–380 chars, no emoji, no hashtags, complete sentence, natural wording, soft CTA.
 3. ALT TEXT: 12–22 words, descriptive only, no CTA, no promotional language.
 4. SEMANTIC MATCH: title + description + alt text must match the board and visible hairstyle.
@@ -757,31 +769,29 @@ Each warning must say EXACTLY what to fix and HOW.`;
   }
 
   public async generateSEOComplete(input: AIInput): Promise<{ title: string; description: string; altText: string }> {
-    const system = `You are an elite Pinterest SEO copywriter for the hairstyle niche.
+    const system = `You are an elite Pinterest SEO strategist trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms across all niches (Home Decor, Beauty & Hair, Fashion, Food & Recipes, Lifestyle, Architecture, DIY, and Products).
+Write high-converting, search-optimized Pin metadata based strictly on the provided context.
 
-TITLE:
-- 45–85 characters
-- no emoji
-- no hashtags
-- no pipe symbols
-- natural, searchable, human-written
-- include hairstyle name clearly
-- no spam words
+STRICT 2026 PINTEREST RANKING RULES:
+1. TITLE (45–80 characters):
+   - Natural user search query written in clean Title Case.
+   - Front-load primary search query in the first 30 characters (mobile grid truncation).
+   - Combine core subject + 2 specific visual modifiers.
+   - STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus signs (+).
+   - NO clickbait buzzwords (Must-Have, Stunning, Viral, Obsession, Perfection).
 
-DESCRIPTION:
-- 220–380 characters
-- no emoji
-- no hashtags
-- use 2–4 relevant SEO terms naturally
-- describe only the visible or provided hairstyle
-- end with a soft CTA
-- complete final sentence
+2. DESCRIPTION (240–360 characters):
+   - Exactly 3 to 4 complete, well-formed sentences ending with a period.
+   - Sentence 1 starts directly with the topic or subject keyword.
+   - FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
+   - Naturally weave 2 to 4 high-intent Pinterest search queries into conversational context.
+   - Final sentence MUST be a natural, soft call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
+   - STRICTLY ZERO hashtags (#), ZERO emojis.
 
-ALT TEXT:
-- 12–22 words
-- clear visual description only
-- no CTA
-- no promotional language
+3. ALT TEXT (14–22 words):
+   - Exactly one complete literal accessibility sentence describing what is physically visible.
+   - Describe subjects, colors, materials, lighting, and layout for Pinterest Lens and screen readers.
+   - NO marketing copy, NO CTA, NO hashtags, NO URLs.
 
 Return ONLY raw JSON:
 {"title":"","description":"","altText":""}`;
@@ -799,12 +809,11 @@ Return ONLY raw JSON:
       };
     } catch (e) {
       console.error('Failed to generate complete SEO via AI:', e);
-      const kw = input.keyword || input.topic || input.boardName || 'layered hair';
-      // const board = input.boardName || input.topic || 'hair styling';
+      const base = input.keyword || input.topic || input.boardName || 'Modern Inspiration';
       return {
-        title: `${kw} On Wavy Hair With Face-Framing Layers`,
-        description: `${kw} creates soft movement and dimension that works well with natural texture. The cut is lightweight through the ends with soft shaping. Save this pin for your next hairstyle idea.`,
-        altText: `Person with a ${kw} hairstyle featuring face-framing layers and natural movement.`
+        title: `${base} Ideas for a Balanced and Clean Aesthetic`,
+        description: `${base} brings natural balance and clean lines together for an elevated look. Incorporating thoughtful details and neutral textures creates an inviting and enduring feel. Save this pin to your board for your next project or aesthetic inspiration.`,
+        altText: `${base} with natural light, clean textures, and balanced neutral tones in an elegant setting.`
       };
     }
   }
@@ -990,20 +999,24 @@ Return ONLY raw JSON:
     const workingPool = await this.syncCloudflareKeysPool().catch(() => [] as { accountId: string; token: string }[]);
     if (workingPool.length === 0) throw new Error('No Cloudflare AI keys found. Please add keys to cloudflare_working_accounts.txt.');
 
-    let mimeType = 'image/jpeg';
-    let base64Image = '';
+    let imageUint8: number[] = [];
 
     if (!hasPrompt) {
       if (!fs.existsSync(imagePath))  throw new Error(`Image file not found: ${imagePath}`);
-      // Resize image for fast API response
-      const image = nativeImage.createFromPath(imagePath);
-      const size  = image.getSize();
-      let resized = image;
-      if (size.width > 800 || size.height > 800) {
-        const scale = 800 / Math.max(size.width, size.height);
-        resized = image.resize({ width: Math.round(size.width * scale), height: Math.round(size.height * scale) });
+      try {
+        const image = nativeImage.createFromPath(imagePath);
+        const size  = image.getSize();
+        let resized = image;
+        if (size.width > 800 || size.height > 800) {
+          const scale = 800 / Math.max(size.width, size.height);
+          resized = image.resize({ width: Math.round(size.width * scale), height: Math.round(size.height * scale) });
+        }
+        const buf = resized.toJPEG(75);
+        imageUint8 = Array.from(new Uint8Array(buf));
+      } catch {
+        const buf = fs.readFileSync(imagePath);
+        imageUint8 = Array.from(new Uint8Array(buf));
       }
-      base64Image = resized.toJPEG(75).toString('base64');
     }
 
     // Clean filename — strip AI/stock naming noise
@@ -1132,37 +1145,46 @@ Return ONLY raw JSON:
     };
 
 
-    const extractJSON = (raw: string): any => {
-      // Strip thinking/reasoning blocks that reasoning models output
-      let s = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const extractJSON = (raw: any): any => {
+      if (!raw) return {};
+      if (typeof raw === 'object') return raw;
+      let s = String(raw).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       s = s.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
       const start = s.indexOf('{');
-      if (start > 0) s = s.slice(start);
       const end   = s.lastIndexOf('}');
-      if (end !== -1 && end < s.length - 1) s = s.slice(0, end + 1);
-      return JSON.parse(s);
+      if (start !== -1 && end !== -1 && end > start) {
+        try {
+          return JSON.parse(s.slice(start, end + 1));
+        } catch {}
+      }
+      // If no valid JSON object was found, wrap text as visual description
+      return {
+        primarySubject: s.slice(0, 100).replace(/\n+/g, ' '),
+        category: 'other',
+        keyVisualElements: [s.slice(0, 150)],
+        colorPalette: 'natural tones',
+        settingOrLighting: 'ambient lighting',
+        aestheticStyle: 'modern',
+        confidence: 0.85
+      };
     };
 
     // ══════════════════════════════════════════════════════
-    // STAGE 1 — VISION ANALYSIS (Llama 4 Scout, 8s limit)
+    // STAGE 1 — VISION ANALYSIS (Llama 3.2 Vision)
     // ══════════════════════════════════════════════════════
-    const visionPrompt = `You are a highly accurate visual content analyst for Pinterest hair content.
-
-Examine the image carefully and extract ONLY what is truly visible.
-Do not guess. Do not invent. If unclear, write "unclear".
-
-Focus on: hairstyle type, haircut, hair length, hair color, hair texture, bangs/fringe, layers, braids, curls, waves, updo, bun, ponytail, bob, pixie, afro, twists, locs, wolf cut, protective styles, styling finish, face-framing details, setting, lighting.
-
-CRITICAL RULES:
-- Describe ONLY what is visible.
-- Do NOT assume age, ethnicity, identity, or profession.
-- Do NOT invent hairstyles not visible in the image.
-- If image shows braids, do NOT claim bangs.
-- If image shows a bun, do NOT claim long layered hair unless clearly visible.
-- If the image shows a mirror selfie where haircut is unclear, say so in imageQualityNotes.
+    const visionPrompt = `You are an elite visual content analyst for Pinterest pins across all categories (Home Decor, Architecture, Hairstyle & Beauty, Fashion, Food & Recipes, Lifestyle, Products, and DIY).
+Examine this image carefully and extract ONLY what is truly visible. Do not guess. Do not invent.
 
 Return ONLY raw JSON, no markdown, no code blocks:
-{"primarySubject":"","visibleHairStyle":"","hairLength":"short|medium|long|unclear","hairColor":"","hairTexture":"straight|wavy|curly|coily|braided|mixed|unclear","visibleDetails":[],"bangsVisible":false,"bangsType":"wispy bangs|curtain bangs|blunt bangs|side bangs|none|unclear","layersVisible":false,"protectiveStyleVisible":false,"faceShapeSignals":"unclear","photoSetting":"indoor|outdoor|salon|studio|street|home|unclear","lighting":"natural light|soft indoor light|studio light|mixed|unclear","poseOrFraming":"front view|side view|seated portrait|close-up|half-body|mirror selfie|unclear","overallAesthetic":"","imageQualityNotes":"","confidence":0.0}`;
+{
+  "primarySubject": "short 2-4 word description of what is visible",
+  "category": "home_decor|hair|beauty|fashion|food|lifestyle|outdoor|tech|other",
+  "keyVisualElements": ["3 to 6 distinct physical objects, textures, materials, or features seen"],
+  "colorPalette": "prominent colors visible",
+  "settingOrLighting": "lighting and atmosphere",
+  "aestheticStyle": "e.g. minimalist, modern, Scandinavian, boho, vintage, industrial, sleek, rustic, luxury, etc.",
+  "confidence": 0.95
+}`;
 
     let visionJSON: any = null;
 
@@ -1171,27 +1193,18 @@ Return ONLY raw JSON, no markdown, no code blocks:
     // ══════════════════════════════════════════════════════
     if (hasPrompt) {
       // Build synthetic visionJSON from prompt so mismatch/fallback helpers still work
-      const HAIR_TERMS_P = /\b(blonde|brunette|dark|black|red|auburn|curly|wavy|straight|short|long|medium|bangs|curtain bangs|wispy bangs|layers|layered|bun|ponytail|braid|braids|braided|natural|coily|afro|highlights|balayage|ombre|pixie|bob|shag|fringe|lob|blowout|textured|sleek|voluminous|wolf cut|freehand|cornrow|zigzag|side part|twist|locs|protective|crochet)\b/gi;
-      const rawPromptWords = cleanPrompt.match(HAIR_TERMS_P) || [];
-      const promptWords = Array.from(new Set(rawPromptWords.map(w => w.toLowerCase())));
+      const rawPromptWords = cleanPrompt.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3);
+      const promptWords = Array.from(new Set(rawPromptWords));
       visionJSON = {
-        visibleHairStyle:       promptWords.slice(0, 4).join(' ') || cleanPrompt.slice(0, 40),
-        hairLength:             /\bshort\b/.test(cleanPrompt) ? 'short' : /\blong\b/.test(cleanPrompt) ? 'long' : 'unclear',
-        hairColor:              promptWords.find((w: string) => /blonde|brunette|dark|black|red|auburn/.test(w)) || 'unclear',
-        hairTexture:            promptWords.find((w: string) => /curly|wavy|straight|coily|braided|textured/.test(w)) || 'unclear',
-        visibleDetails:         promptWords.slice(0, 5),
-        bangsVisible:           /bangs|fringe|wispy/.test(cleanPrompt.toLowerCase()),
-        bangsType:              /wispy/.test(cleanPrompt) ? 'wispy bangs' : /curtain/.test(cleanPrompt) ? 'curtain bangs' : 'unclear',
-        layersVisible:          /layer/.test(cleanPrompt.toLowerCase()),
-        protectiveStyleVisible: /braid|cornrow|afro|locs|twist|freehand|zigzag|crochet/.test(cleanPrompt.toLowerCase()),
-        faceShapeSignals:       'unclear',
-        photoSetting:           'unclear',
-        lighting:               'unclear',
-        poseOrFraming:          'unclear',
-        imageQualityNotes:      'Derived from image generation prompt',
-        confidence:             0.7
+        primarySubject:         promptWords.slice(0, 3).join(' ') || cleanPrompt.slice(0, 35),
+        category:               'other',
+        keyVisualElements:      promptWords.slice(0, 5),
+        colorPalette:           'natural tones',
+        settingOrLighting:      'natural ambient lighting',
+        aestheticStyle:         'modern aesthetic',
+        confidence:             0.85
       };
-      console.log(`[Stage 1 Skipped] Prompt-derived vision: style="${visionJSON.visibleHairStyle}", texture="${visionJSON.hairTexture}"`);
+      console.log(`[Stage 1 Skipped] Prompt-derived vision: subject="${visionJSON.primarySubject}"`);
     } else {
       // Standard vision path (Llama 3.2 Vision)
       try {
@@ -1200,16 +1213,12 @@ Return ONLY raw JSON, no markdown, no code blocks:
             (cred) => ({
               url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`,
               body: {
-                messages: [{
-                  role: 'user',
-                  content: [
-                    { type: 'text',      text: visionPrompt },
-                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
-                  ]
-                }]
+                prompt: visionPrompt,
+                image: imageUint8,
+                max_tokens: 500
               }
             }),
-            12000
+            20000
           );
         };
 
@@ -1219,7 +1228,6 @@ Return ONLY raw JSON, no markdown, no code blocks:
         } catch (visionErr: any) {
           if (visionErr.message && visionErr.message.includes("must submit the prompt 'agree'")) {
             console.warn('[Stage 1 Vision] License agreement required. Auto-submitting agreement...');
-            // Agree using prompt: 'agree' for the working pool accounts
             await raceCloudflare(
               (cred) => ({
                 url:  `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`,
@@ -1228,7 +1236,6 @@ Return ONLY raw JSON, no markdown, no code blocks:
               8000
             ).catch(() => {});
             
-            // Retry the vision call
             console.log('[Stage 1 Vision] Retrying vision call post-agreement...');
             visionRaw = await makeVisionCall();
           } else {
@@ -1236,78 +1243,60 @@ Return ONLY raw JSON, no markdown, no code blocks:
           }
         }
         visionJSON = extractJSON(visionRaw);
-        console.log(`[Stage 1 Vision] OK — style: "${visionJSON.visibleHairStyle}", color: "${visionJSON.hairColor}", confidence: ${visionJSON.confidence}`);
+        console.log(`[Stage 1 Vision] OK — subject: "${visionJSON.primarySubject}", category: "${visionJSON.category}", colors: "${visionJSON.colorPalette}"`);
       } catch (e) {
         console.warn('[Stage 1 Vision] Failed — building fallback vision from filename:', e);
-        const HAIR_TERMS = /\b(blonde|brunette|dark|black|red|auburn|curly|wavy|straight|short|long|medium|bangs|curtain bangs|wispy bangs|layers|layered|bun|ponytail|braid|braids|braided|natural|coily|afro|highlights|balayage|ombre|pixie|bob|shag|fringe|lob|blowout|textured|sleek|voluminous|wolf cut)\b/gi;
-        const nameWords = rawName.match(HAIR_TERMS) || [];
         visionJSON = {
-          visibleHairStyle:       nameWords.slice(0, 3).join(' ') || 'hair',
-          hairLength:             'unclear',
-          hairColor:              nameWords.find((w: string) => /blonde|brunette|dark|black|red|auburn/.test(w)) || 'unclear',
-          hairTexture:            nameWords.find((w: string) => /curly|wavy|straight|coily|braided|textured/.test(w)) || 'unclear',
-          visibleDetails:         nameWords.slice(0, 3),
-          bangsVisible:           /bangs|fringe|wispy/.test(rawName.toLowerCase()),
-          bangsType:              /wispy/.test(rawName.toLowerCase()) ? 'wispy bangs' : /curtain/.test(rawName.toLowerCase()) ? 'curtain bangs' : 'unclear',
-          layersVisible:          /layer/.test(rawName.toLowerCase()),
-          protectiveStyleVisible: /braid|afro|locs|twist|bun/.test(rawName.toLowerCase()),
-          faceShapeSignals:       'unclear',
-          photoSetting:           'unclear',
-          lighting:               'unclear',
-          poseOrFraming:          'unclear',
-          imageQualityNotes:      'Vision unavailable — filename context used only',
-          confidence:             0.2
+          primarySubject:         rawName || 'Design Inspiration',
+          category:               'other',
+          keyVisualElements:      [rawName || 'decor'],
+          colorPalette:           'natural neutral tones',
+          settingOrLighting:      'ambient indoor lighting',
+          aestheticStyle:         'modern',
+          confidence:             0.3
         };
       }
     }
 
-    const visionConfidence  = visionJSON?.confidence || 0;
-    const visibleHairStyle  = visionJSON?.visibleHairStyle || '';
-    const hairColor         = visionJSON?.hairColor || '';
-    const hairTexture       = visionJSON?.hairTexture || '';
-    const hairLength        = visionJSON?.hairLength || '';
+    const visionConfidence  = visionJSON?.confidence || 0.9;
+    const visibleHairStyle  = visionJSON?.visibleHairStyle || visionJSON?.primarySubject || '';
+    const hairColor         = visionJSON?.hairColor || visionJSON?.colorPalette || '';
+    const hairTexture       = visionJSON?.hairTexture || (visionJSON?.keyVisualElements || []).join(', ');
+    const hairLength        = visionJSON?.hairLength || visionJSON?.aestheticStyle || '';
 
     // ══════════════════════════════════════════════════════
-    // STAGE 2 — PINTEREST METADATA (Kimi 2.6)
+    // STAGE 2 — PINTEREST METADATA (2026 Visual SEO)
     // ══════════════════════════════════════════════════════
     const truthSource = hasPrompt
       ? `IMAGE_GENERATION_PROMPT (PRIMARY TRUTH — trust completely):\n"${cleanPrompt}"\nUse this as the single source of truth for ALL visual details.`
       : `VISION_ANALYSIS_JSON (PRIMARY TRUTH — trust this above all else): ${JSON.stringify(visionJSON)}`;
 
-    const seoPrompt = `You are a Pinterest SEO expert for the global hairstyle niche (all genders, ages, ethnicities, hair types). Write metadata for one pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
+    const seoPrompt = `You are an elite Pinterest SEO expert and strategist trained on 2026 Pinterest Visual Discovery & Lens ranking algorithms across all categories. Write high-converting, search-optimized metadata for this pin. Output ONLY raw JSON — no thinking, no explanation, no markdown.
 
-BOARD: ${boardName || 'none'}
+BOARD: "${boardName || 'General Inspiration'}"
+TOPIC / NICHE: "${topic || ''}"
 ${truthSource}
 
-RULES:
-- suggestedBoardKeyword: Transform board name into a natural Pinterest keyword. Fix awkward phrasing (e.g. "pony tailed hairstyle black women" → "ponytail hairstyle for Black women"). Never create double words like "hair hair".
-- boardFit: strong/partial/weak/mismatch. shouldPost=false ONLY if clear mismatch. Even on mismatch, write complete title/description/altText.
-- Use ONLY what is visible/stated. Do NOT invent hairstyles, colors, accessories, or styling details.
-- No emojis, no hashtags, no pipe "|", no plus "+". No spammy adjectives: stunning, amazing, viral, trending, obsession, must-have, hair goals.
-- No AI/prompt references. Forbidden description openers: Discover, Achieve, Get inspired, Check out, Looking for.
-- Inclusive language. Only mention race/gender if clearly stated in source. Capitalize "Black" when referring to people.
+CRITICAL 2026 PINTEREST RANKING RULES:
+1. TITLE (45–80 characters):
+   - Natural user search query written in clean Title Case.
+   - Front-load primary search query in the first 30 characters (mobile grid truncation).
+   - Combine core subject + 2 specific visual modifiers (color, material, aesthetic style, cut, setting, or room type).
+   - STRICTLY ZERO emojis, ZERO hashtags (#), ZERO pipes (|), ZERO plus signs (+).
+   - NO clickbait words (Must-Have, Stunning, Viral, Obsession, Perfection).
 
-TITLE — CRITICAL: MUST BE 55–80 CHARACTERS LONG (count carefully):
-- Natural Pinterest search query in Title Case.
-- Front-load the strongest keyword in the first 30 characters.
-- Include the hairstyle name + at least 2 descriptive modifiers (color, length, texture, or style detail).
-- GOOD EXAMPLES (55-80 chars): "Honey Blonde Balayage on Long Wavy Hair with Layers", "Box Braids with Gold Cuffs for Medium Length Natural Hair", "Textured Wolf Cut with Curtain Bangs on Dark Brown Hair"
-- BAD EXAMPLES (too short, REJECTED): "Box Braids with Gold Cuffs", "Wolf Cut Haircut", "Blonde Balayage Hair"
-- STRICTLY NO: pipe "|", plus "+", emojis, hashtags.
+2. DESCRIPTION (240–360 characters):
+   - Exactly 3 to 4 complete, well-formed sentences ending with a period.
+   - Sentence 1 starts directly with the topic or subject keyword.
+   - FORBIDDEN BANNED OPENERS: Never start with "Discover", "Achieve", "Get inspired", "Check out", "Looking for", or "In this image".
+   - Naturally weave 2 to 4 high-intent Pinterest search queries into conversational context.
+   - Final sentence MUST be a natural, soft call-to-action (e.g. "Save this pin to your board for your next remodel/styling/project.", "Pin this idea to reference when planning your space/look.").
+   - STRICTLY ZERO hashtags (#), ZERO emojis.
 
-DESCRIPTION (260–360 characters total):
-- Exactly 3–4 complete sentences. Must end with a complete sentence.
-- Start directly with the hairstyle name or keyword — NOT with Discover/Achieve/Check out/etc.
-- Include 2–4 relevant SEO terms naturally (e.g. natural hair, protective style, box braids, cornrows, curls, ponytail, fade, waves, bob, pixie).
-- End with ONE soft CTA sentence (e.g. "Save this pin for your next hairstyle idea.", "Pin this look for your next hair appointment.", "Reference this before your next barber or stylist visit.").
-- No emojis, no hashtags.
-
-ALT TEXT — CRITICAL: MUST BE EXACTLY 15–22 WORDS (count every word):
-- One complete literal sentence describing exactly what is visible in the image.
-- Must include: hairstyle name + hair color + length/texture + one more visual detail (accessories, background, face signals).
-- GOOD EXAMPLES (15-22 words): "Woman with long honey blonde balayage waves and face-framing highlights against a neutral background", "Black woman with medium-length box braids adorned with gold cuffs falling past her shoulders"
-- BAD EXAMPLES (too short, REJECTED): "Textured wolf cut on dark hair", "Man with fade haircut"
-- No CTA, no hashtags, no promotional words.
+3. ALT TEXT (14–22 words):
+   - Exactly one complete literal accessibility sentence describing what is physically visible.
+   - Describe subjects, colors, materials, lighting, and layout for Pinterest Lens and screen readers.
+   - NO marketing copy, NO CTA, NO hashtags, NO URLs.
 
 Return ONLY this JSON:
 {"suggestedBoardKeyword":"","boardFit":"strong","shouldPost":true,"boardFitReason":"","mismatchWarning":"","title":"","description":"","altText":""}`;
@@ -1328,10 +1317,23 @@ Return ONLY this JSON:
       const parsed = extractJSON(seoRaw);
       if (!parsed.title || !parsed.description) throw new Error('Incomplete Stage 2 response');
 
-      // Post-process to clean any remaining noise
-      const cleanedTitle       = cleanText(parsed.title || '');
-      const cleanedDescription = cleanText(parsed.description || '');
-      const cleanedAlt         = cleanText(parsed.altText || '');
+      // Post-process to clean any remaining noise and auto-sanitize
+      let cleanedTitle       = cleanText(parsed.title || '');
+      let cleanedDescription = cleanText(parsed.description || '');
+      let cleanedAlt         = cleanText(parsed.altText || '');
+
+      // Auto-trim title if slightly over
+      if (cleanedTitle.length > PINTEREST_RULES.titleMax) {
+        cleanedTitle = cleanedTitle.slice(0, PINTEREST_RULES.titleMax).replace(/\s+[^\s]*$/, '');
+      }
+
+      // Auto-trim description to last complete sentence under max
+      if (cleanedDescription.length > PINTEREST_RULES.descriptionMax) {
+        cleanedDescription = safeTrimToSentence(cleanedDescription, PINTEREST_RULES.descriptionMax);
+      }
+      if (!/[.!?]$/.test(cleanedDescription)) {
+        cleanedDescription += '.';
+      }
 
       // Validate output quality
       const titleError = validateTitle(cleanedTitle);
