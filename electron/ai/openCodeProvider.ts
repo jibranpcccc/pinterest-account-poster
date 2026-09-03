@@ -332,6 +332,9 @@ function cleanText(text: string): string {
     .replace(/\b(perfection)\b/gi, 'elegance')
     .replace(/\b(hair goals|goals)\b/gi, 'inspiration');
 
+  // Deduplicate consecutive identical words (e.g. "Blonde Blonde" -> "Blonde")
+  cleaned = cleaned.replace(/\b([a-z]+)\s+\1\b/gi, '$1');
+
   return cleaned;
 }
 
@@ -802,9 +805,15 @@ Return ONLY raw JSON:
       const result = await this.makeChatCompletion(system, user);
       const cleaned = result.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleaned);
+      let desc = cleanText(parsed.description || '');
+      if (desc.length > PINTEREST_RULES.descriptionMax) {
+        desc = safeTrimToSentence(desc, PINTEREST_RULES.descriptionMax);
+      }
+      if (!/[.!?]$/.test(desc)) desc += '.';
+
       return {
         title: cleanText(parsed.title || ''),
-        description: parsed.description || '',
+        description: desc,
         altText: parsed.altText || ''
       };
     } catch (e) {
