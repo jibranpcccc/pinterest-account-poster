@@ -1,0 +1,39 @@
+name: Pinterest Cloud Buffer Monitor & Scheduler
+
+on:
+  schedule:
+    # Runs every 2 days at 20:00 UTC (01:00 AM Pakistan Standard Time PKT)
+    - cron: '0 20 */2 * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force schedule next 10-day advance batch immediately'
+        required: false
+        type: boolean
+        default: false
+      min_buffer_days:
+        description: 'Minimum safe buffer days before pushing (default: 7)'
+        required: false
+        type: string
+        default: '7'
+
+jobs:
+  check-and-schedule:
+    name: Pinterest Cloud Buffer Check
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        working-directory: "c:/Users/jibra/Desktop/1/pinterest account poster"
+
+    steps:
+      - name: Display Execution Context
+        run: |
+          echo "Starting Pinterest Cloud Buffer Monitor..."
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Runner Hostname: $env:COMPUTERNAME"
+
+      - name: Run Buffer Check & Advance Push
+        run: |
+          $forceArg = if ("${{ github.event.inputs.force }}" -eq "true") { "--force" } else { "" }
+          $bufferArg = "--min-buffer-days=${{ github.event.inputs.min_buffer_days || '7' }}"
+          python check_and_push_buffer.py $forceArg $bufferArg
