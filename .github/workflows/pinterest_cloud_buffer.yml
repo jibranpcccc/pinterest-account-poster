@@ -2,8 +2,8 @@ name: Pinterest Cloud Buffer Monitor & Scheduler
 
 on:
   schedule:
-    # Runs every 2 days at 20:00 UTC (01:00 AM Pakistan Standard Time PKT)
-    - cron: '0 20 */2 * *'
+    # Runs EVERY DAY at 20:00 UTC (01:00 AM Pakistan Standard Time PKT)
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
       force:
